@@ -1,6 +1,18 @@
 # Dice Probabilities
 
-An exact probability evaluator for DnD-style dice expressions. Given an expression involving dice and variables, it computes the full **probability mass function (PMF)** and **expected value** by enumerating all possible outcomes.
+When you roll two dice and the result of one die affects what the other die contributes, standard probability tables break down. This tool handles those cases exactly.
+
+The core idea: bind dice rolls to named variables, then write an expression over those variables. The engine enumerates every combination of outcomes, evaluates the expression for each, and accumulates exact probabilities.
+
+For example, `e(X, Y): X + Y > 6 -> 2*X | X - Y; e(d6, d6)` asks: roll two d6s — if their sum exceeds 6, score double the first die; otherwise score the difference. The answer isn't a single number but a full distribution, because X and Y appear in both the condition and the result branches.
+
+```text
+-4: 0.56%    -3: 1.39%    -2: 2.50%    ...
+ 8: 2.78%    10: 5.56%    12: 2.78%
+(E): 3.78
+```
+
+The same mechanism handles arbitrary nesting: `X > 3 -> (Y > 3 -> X*Y | X) | Y` — two dependent thresholds where the payout depends on which branch fired. Every possible combination of rolls is considered; the result is always exact, never sampled.
 
 ## Installation
 
