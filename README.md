@@ -12,7 +12,7 @@ For example, `e(X, Y): X + Y > 6 -> 2*X | X - Y; e(d6, d6)` asks: roll two d6s �
 (E): 3.78
 ```
 
-The same mechanism handles arbitrary nesting: `X > 3 -> (Y > 3 -> X*Y | X) | Y` — two dependent thresholds where the payout depends on which branch fired. Every possible combination of rolls is considered; the result is always exact, never sampled.
+The same mechanism handles arbitrary nesting: `X > 3 -> (Y > 3 -> X*Y | X) | Y` — any dependent thresholds where the payout depends on which branch fired. Every possible combination of rolls is considered; the result is always exact, never sampled.
 
 ## Installation
 
@@ -107,13 +107,13 @@ atom    := INT | NAME | dN | "(" expr ")"
 
 ### Operator precedence (tightest to loosest)
 
-| Level | Operators |
-|-------|-----------|
-| Arithmetic | `*` then `+` `-` |
-| Comparison | `<` `>` `<=` `>=` `==` `!=` |
-| Boolean AND | `&&` |
-| Boolean OR | `\|\|` |
-| Conditional | `cond -> then \| else` |
+| Level       | Operators                   |
+| ----------- | --------------------------- |
+| Arithmetic  | `*` then `+` `-`            |
+| Comparison  | `<` `>` `<=` `>=` `==` `!=` |
+| Boolean AND | `&&`                        |
+| Boolean OR  | `\|\|`                      |
+| Conditional | `cond -> then \| else`      |
 
 Parentheses override precedence at any level, including nesting conditionals:
 
@@ -127,11 +127,11 @@ e(X, Y): X > 3 -> (Y > 3 -> X*Y | X) | Y; e(d6, d6)
 
 ### Dice
 
-| Syntax | Meaning |
-|--------|---------|
-| `d6` | A fair six-sided die (faces 1–6) |
-| `d20` | A fair twenty-sided die (faces 1–20) |
-| `dN` | Any positive integer N |
+| Syntax | Meaning                              |
+| ------ | ------------------------------------ |
+| `d6`   | A fair six-sided die (faces 1–6)     |
+| `d20`  | A fair twenty-sided die (faces 1–20) |
+| `dN`   | Any positive integer N               |
 
 In the named form, dice appear in the `e(dN, ...)` binding list. In expressions (named or bare), `dN` tokens are also allowed inline as anonymous dice.
 
@@ -200,13 +200,13 @@ dict[int, float]   ← PMF
 
 ### Modules
 
-| Module | Responsibility |
-|--------|---------------|
+| Module         | Responsibility                                                                                            |
+| -------------- | --------------------------------------------------------------------------------------------------------- |
 | `ast_nodes.py` | Frozen dataclass AST nodes (`Const`, `Var`, `Die`, `Add`, `Sub`, `Mul`, `Compare`, `IfElse`, `And`, `Or`) |
-| `evaluator.py` | `eval_expr(expr, env)` — pure evaluation given a concrete variable assignment |
-| `engine.py` | `build_pmf(expr, domains)` — joint enumeration over all variable assignments |
-| `parser.py` | Recursive-descent parser; `parse()` and `parse_expr()` |
-| `cli.py` | Command-line interface |
+| `evaluator.py` | `eval_expr(expr, env)` — pure evaluation given a concrete variable assignment                             |
+| `engine.py`    | `build_pmf(expr, domains)` — joint enumeration over all variable assignments                              |
+| `parser.py`    | Recursive-descent parser; `parse()` and `parse_expr()`                                                    |
+| `cli.py`       | Command-line interface                                                                                    |
 
 ### How it works
 
