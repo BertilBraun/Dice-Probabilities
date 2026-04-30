@@ -74,6 +74,7 @@ class TestParseExprCompare:
         assert isinstance(node, Compare)
         assert node.left == Mul(Const(2), Var("X"))
         assert node.right == Var("Y")
+        assert node.op == ">="
 
 
 class TestParseExprIfElse:
@@ -97,7 +98,6 @@ class TestParseExprIfElse:
         assert node.else_branch == Add(Var("X"), Mul(Const(2), Var("Y")))
 
     def test_arrow_does_not_conflict_with_subtraction(self):
-        # "X - 1 -> X | 0" should not be confused by "->" tokenisation
         node = parse_expr("X - 1 > 0 -> X | 0")
         assert isinstance(node, IfElse)
         assert node.condition == Compare(Sub(Var("X"), Const(1)), ">", Const(0))
@@ -133,17 +133,17 @@ class TestParseFullExpression:
 
     def test_domain_probabilities_sum_to_1(self):
         _, domains = parse("e(X): X; e(d6)")
-        total = sum(p for _, p in domains["X"])
+        total = sum(probability for _, probability in domains["X"])
         assert abs(total - 1.0) < 1e-9
 
     def test_domain_faces_are_correct(self):
         _, domains = parse("e(X): X; e(d6)")
-        faces = [v for v, _ in domains["X"]]
+        faces = [face for face, _ in domains["X"]]
         assert faces == [1, 2, 3, 4, 5, 6]
 
     def test_d20_domain(self):
         _, domains = parse("e(X): X; e(d20)")
-        faces = [v for v, _ in domains["X"]]
+        faces = [face for face, _ in domains["X"]]
         assert faces == list(range(1, 21))
 
 
@@ -166,13 +166,18 @@ class TestParseErrors:
 class TestParseAnd:
     def test_simple_and(self):
         node = parse_expr("X > 2 && Y > 3")
-        assert node == And(Compare(Var("X"), ">", Const(2)), Compare(Var("Y"), ">", Const(3)))
+        assert node == And(
+            Compare(Var("X"), ">", Const(2)),
+            Compare(Var("Y"), ">", Const(3)),
+        )
 
     def test_and_left_associative(self):
         node = parse_expr("X > 0 && Y > 0 && Z > 0")
-        expected = And(And(Compare(Var("X"), ">", Const(0)),
-                           Compare(Var("Y"), ">", Const(0))),
-                       Compare(Var("Z"), ">", Const(0)))
+        expected = And(
+            And(Compare(Var("X"), ">", Const(0)),
+                Compare(Var("Y"), ">", Const(0))),
+            Compare(Var("Z"), ">", Const(0)),
+        )
         assert node == expected
 
     def test_and_in_ifelse_condition(self):
@@ -189,13 +194,18 @@ class TestParseAnd:
 class TestParseOr:
     def test_simple_or(self):
         node = parse_expr("X > 2 || Y > 3")
-        assert node == Or(Compare(Var("X"), ">", Const(2)), Compare(Var("Y"), ">", Const(3)))
+        assert node == Or(
+            Compare(Var("X"), ">", Const(2)),
+            Compare(Var("Y"), ">", Const(3)),
+        )
 
     def test_or_left_associative(self):
         node = parse_expr("X > 0 || Y > 0 || Z > 0")
-        expected = Or(Or(Compare(Var("X"), ">", Const(0)),
-                         Compare(Var("Y"), ">", Const(0))),
-                      Compare(Var("Z"), ">", Const(0)))
+        expected = Or(
+            Or(Compare(Var("X"), ">", Const(0)),
+               Compare(Var("Y"), ">", Const(0))),
+            Compare(Var("Z"), ">", Const(0)),
+        )
         assert node == expected
 
     def test_or_in_ifelse_condition(self):
@@ -213,22 +223,24 @@ class TestBooleanPrecedence:
         node = parse_expr("X > 0 || Y > 0 && Z > 0")
         assert isinstance(node, Or)
         assert node.left == Compare(Var("X"), ">", Const(0))
-        assert node.right == And(Compare(Var("Y"), ">", Const(0)),
-                                 Compare(Var("Z"), ">", Const(0)))
+        assert node.right == And(
+            Compare(Var("Y"), ">", Const(0)),
+            Compare(Var("Z"), ">", Const(0)),
+        )
 
     def test_compare_binds_tighter_than_and(self):
-        # X + 1 > 2 && Y < 5  →  (X+1>2) && (Y<5)
         node = parse_expr("X + 1 > 2 && Y < 5")
         assert isinstance(node, And)
         assert node.left == Compare(Add(Var("X"), Const(1)), ">", Const(2))
         assert node.right == Compare(Var("Y"), "<", Const(5))
 
     def test_pipe_in_ifelse_not_confused_with_or(self):
-        # X > 0 -> Y || Z > 0 | 0  →  IfElse(X>0, Y||Z>0, 0)
         node = parse_expr("X > 0 -> Y > 0 || Z > 0 | 0")
         assert isinstance(node, IfElse)
-        assert node.then_branch == Or(Compare(Var("Y"), ">", Const(0)),
-                                      Compare(Var("Z"), ">", Const(0)))
+        assert node.then_branch == Or(
+            Compare(Var("Y"), ">", Const(0)),
+            Compare(Var("Z"), ">", Const(0)),
+        )
         assert node.else_branch == Const(0)
 
 
@@ -245,7 +257,6 @@ class TestParseInlineDiceRaw:
         assert parse_expr("d6 + 3") == Add(Die(6), Const(3))
 
     def test_two_dice_add(self):
-        # Two structurally equal Die(6) nodes — distinct occurrences
         node = parse_expr("d6 + d6")
         assert node == Add(Die(6), Die(6))
 
@@ -271,42 +282,40 @@ class TestParseWithDiceExtraction:
     def test_bare_d6_gives_one_domain(self):
         expr, domains = parse("d6")
         assert len(domains) == 1
-        d = list(domains.values())[0]
-        assert d == die_domain(6)
+        domain = list(domains.values())[0]
+        assert domain == die_domain(6)
 
     def test_two_d6_give_two_domains(self):
         expr, domains = parse("d6 + d6")
         assert len(domains) == 2
-        for d in domains.values():
-            assert d == die_domain(6)
+        for domain in domains.values():
+            assert domain == die_domain(6)
 
     def test_two_d6_become_distinct_vars(self):
         expr, domains = parse("d6 + d6")
-        names = list(domains.keys())
-        assert names[0] != names[1]
+        domain_names = list(domains.keys())
+        assert domain_names[0] != domain_names[1]
 
     def test_mixed_dice_sizes(self):
         _, domains = parse("d6 + d20")
-        sizes = sorted(len(d) for d in domains.values())
+        sizes = sorted(len(domain) for domain in domains.values())
         assert sizes == [6, 20]
 
     def test_die_in_condition_gives_two_domains(self):
-        # d6 > 3 -> d4 | 0  — two dice, independent
         _, domains = parse("d6 > 3 -> d4 | 0")
         assert len(domains) == 2
-        sizes = sorted(len(d) for d in domains.values())
+        sizes = sorted(len(domain) for domain in domains.values())
         assert sizes == [4, 6]
 
     def test_named_form_with_inline_die(self):
-        # e(X): X + d6; e(d6)  — named X plus anonymous die
         expr, domains = parse("e(X): X + d6; e(d6)")
         assert len(domains) == 2
         assert "X" in domains
 
     def test_domain_names_are_auto_generated(self):
         _, domains = parse("d6 + d6")
-        for name in domains:
-            assert name.startswith("_d")
+        for domain_name in domains:
+            assert domain_name.startswith("_d")
 
 
 # ── parse() bare form (no e() wrapper) ───────────────────────────────────────

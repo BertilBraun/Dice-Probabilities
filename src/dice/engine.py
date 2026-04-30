@@ -4,28 +4,28 @@ from itertools import product as cartesian_product
 from dice.ast_nodes import Expr
 from dice.evaluator import eval_expr
 
-
-def die_domain(sides: int) -> list[tuple[int, float]]:
-    p = 1.0 / sides
-    return [(face, p) for face in range(1, sides + 1)]
+Domain = list[tuple[int, float]]
+PMF = dict[int, float]
 
 
-def build_pmf(
-    expr: Expr,
-    var_domains: dict[str, list[tuple[int, float]]],
-) -> dict[int, float]:
+def die_domain(sides: int) -> Domain:
+    probability = 1.0 / sides
+    return [(face, probability) for face in range(1, sides + 1)]
+
+
+def build_pmf(expr: Expr, var_domains: dict[str, Domain]) -> PMF:
     if not var_domains:
         return {int(eval_expr(expr, {})): 1.0}
 
-    names = list(var_domains.keys())
-    domains = [var_domains[n] for n in names]
+    variable_names = list(var_domains.keys())
+    domain_lists = [var_domains[variable_name] for variable_name in variable_names]
 
-    result: dict[int, float] = defaultdict(float)
-    for combo in cartesian_product(*domains):
-        env = {name: face for name, (face, _) in zip(names, combo)}
-        joint_p = 1.0
-        for _, p in combo:
-            joint_p *= p
-        result[int(eval_expr(expr, env))] += joint_p
+    outcome_probs: dict[int, float] = defaultdict(float)
+    for outcome in cartesian_product(*domain_lists):
+        variable_values = {variable_name: face for variable_name, (face, _) in zip(variable_names, outcome)}
+        joint_probability = 1.0
+        for _, probability in outcome:
+            joint_probability *= probability
+        outcome_probs[int(eval_expr(expr, variable_values))] += joint_probability
 
-    return dict(result)
+    return dict(outcome_probs)

@@ -82,18 +82,18 @@ class TestCompare:
 
 class TestIfElse:
     def test_takes_then_branch_when_true(self):
-        cond = Compare(Var("X"), ">", Const(3))
-        expr = IfElse(cond, Mul(Var("X"), Const(2)), Const(0))
+        condition = Compare(Var("X"), ">", Const(3))
+        expr = IfElse(condition, Mul(Var("X"), Const(2)), Const(0))
         assert eval_expr(expr, {"X": 5}) == 10
 
     def test_takes_else_branch_when_false(self):
-        cond = Compare(Var("X"), ">", Const(3))
-        expr = IfElse(cond, Mul(Var("X"), Const(2)), Const(0))
+        condition = Compare(Var("X"), ">", Const(3))
+        expr = IfElse(condition, Mul(Var("X"), Const(2)), Const(0))
         assert eval_expr(expr, {"X": 2}) == 0
 
     def test_boundary_at_exactly_threshold(self):
-        cond = Compare(Var("X"), ">", Const(3))
-        expr = IfElse(cond, Mul(Var("X"), Const(2)), Const(0))
+        condition = Compare(Var("X"), ">", Const(3))
+        expr = IfElse(condition, Mul(Var("X"), Const(2)), Const(0))
         assert eval_expr(expr, {"X": 3}) == 0
 
     def test_nested_ifelse(self):
@@ -113,18 +113,18 @@ class TestDieRaisesTypeError:
 class TestComplexExpressions:
     def test_two_var_conditional_then_branch(self):
         # X+Y>6 -> X*2+Y | X+2*Y ; X=4, Y=5 → 13
-        cond  = Compare(Add(Var("X"), Var("Y")), ">", Const(6))
-        then_ = Add(Mul(Var("X"), Const(2)), Var("Y"))
-        else_ = Add(Var("X"), Mul(Const(2), Var("Y")))
-        expr  = IfElse(cond, then_, else_)
+        condition  = Compare(Add(Var("X"), Var("Y")), ">", Const(6))
+        then_branch = Add(Mul(Var("X"), Const(2)), Var("Y"))
+        else_branch = Add(Var("X"), Mul(Const(2), Var("Y")))
+        expr  = IfElse(condition, then_branch, else_branch)
         assert eval_expr(expr, {"X": 4, "Y": 5}) == 13
 
     def test_two_var_conditional_else_branch(self):
         # X=2, Y=3 → 5 not > 6 → else: 2 + 2*3 = 8
-        cond  = Compare(Add(Var("X"), Var("Y")), ">", Const(6))
-        then_ = Add(Mul(Var("X"), Const(2)), Var("Y"))
-        else_ = Add(Var("X"), Mul(Const(2), Var("Y")))
-        expr  = IfElse(cond, then_, else_)
+        condition  = Compare(Add(Var("X"), Var("Y")), ">", Const(6))
+        then_branch = Add(Mul(Var("X"), Const(2)), Var("Y"))
+        else_branch = Add(Var("X"), Mul(Const(2), Var("Y")))
+        expr  = IfElse(condition, then_branch, else_branch)
         assert eval_expr(expr, {"X": 2, "Y": 3}) == 8
 
 
@@ -146,8 +146,8 @@ class TestAnd:
         assert not eval_expr(expr, {"X": 2, "Y": 2})
 
     def test_and_in_ifelse_condition(self):
-        cond = And(Compare(Var("X"), ">", Const(3)), Compare(Var("Y"), ">", Const(3)))
-        expr = IfElse(cond, Add(Var("X"), Var("Y")), Const(0))
+        condition = And(Compare(Var("X"), ">", Const(3)), Compare(Var("Y"), ">", Const(3)))
+        expr = IfElse(condition, Add(Var("X"), Var("Y")), Const(0))
         assert eval_expr(expr, {"X": 4, "Y": 5}) == 9
         assert eval_expr(expr, {"X": 4, "Y": 2}) == 0
         assert eval_expr(expr, {"X": 2, "Y": 5}) == 0
@@ -171,8 +171,8 @@ class TestOr:
         assert not eval_expr(expr, {"X": 2, "Y": 2})
 
     def test_or_in_ifelse_condition(self):
-        cond = Or(Compare(Var("X"), ">", Const(4)), Compare(Var("Y"), ">", Const(4)))
-        expr = IfElse(cond, Add(Var("X"), Var("Y")), Const(0))
+        condition = Or(Compare(Var("X"), ">", Const(4)), Compare(Var("Y"), ">", Const(4)))
+        expr = IfElse(condition, Add(Var("X"), Var("Y")), Const(0))
         assert eval_expr(expr, {"X": 5, "Y": 1}) == 6   # X passes
         assert eval_expr(expr, {"X": 1, "Y": 5}) == 6   # Y passes
         assert eval_expr(expr, {"X": 2, "Y": 2}) == 0   # neither passes
@@ -180,17 +180,11 @@ class TestOr:
 
 class TestAndOrPrecedence:
     def test_and_binds_tighter_than_or(self):
-        # (False || (True && True)) = True
-        # If OR were tighter: ((False || True) && True) = True — same result here
-        # Better: (False || (True && False)) = False
-        #         ((False || True) && False) = False — still same
-        # Use: (True || (False && False)) = True   vs   ((True || False) && False) = False
-        inner_and = And(Compare(Var("X"), ">", Const(9)), Compare(Var("X"), ">", Const(9)))  # False&&False
-        outer_or  = Or(Compare(Var("X"), ">", Const(0)), inner_and)  # True || False&&False
-        assert eval_expr(outer_or, {"X": 1})  # True || (False&&False) = True
+        inner_and = And(Compare(Var("X"), ">", Const(9)), Compare(Var("X"), ">", Const(9)))
+        outer_or  = Or(Compare(Var("X"), ">", Const(0)), inner_and)
+        assert eval_expr(outer_or, {"X": 1})
 
     def test_and_or_chained(self):
-        # X>0 && Y>0 && Z>0
         expr = And(And(Compare(Var("X"), ">", Const(0)),
                        Compare(Var("Y"), ">", Const(0))),
                    Compare(Var("Z"), ">", Const(0)))

@@ -2,6 +2,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+VALID_OPS = {"<", ">", "<=", ">=", "==", "!="}
+
+
 class Expr:
     pass
 
@@ -63,6 +66,3 @@ class And(Expr):
 class Or(Expr):
     left: Expr
     right: Expr
-
-
-VALID_OPS = {"<", ">", "<=", ">=", "==", "!="}

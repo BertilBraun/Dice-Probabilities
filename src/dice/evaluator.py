@@ -2,7 +2,9 @@ from __future__ import annotations
 import operator as _op
 from dice.ast_nodes import Expr, Const, Var, Add, Sub, Mul, Compare, IfElse, And, Or
 
-_OPS = {
+Env = dict[str, int]
+
+_OPERATOR_FUNCTIONS = {
     "<":  _op.lt,
     ">":  _op.gt,
     "<=": _op.le,
@@ -12,25 +14,25 @@ _OPS = {
 }
 
 
-def eval_expr(expr: Expr, env: dict[str, int]) -> int:
+def eval_expr(expr: Expr, env: Env) -> int:
     match expr:
-        case Const(value=v):
-            return v
-        case Var(name=n):
-            return env[n]
-        case Add(left=a, right=b):
-            return eval_expr(a, env) + eval_expr(b, env)
-        case Sub(left=a, right=b):
-            return eval_expr(a, env) - eval_expr(b, env)
-        case Mul(left=a, right=b):
-            return eval_expr(a, env) * eval_expr(b, env)
-        case Compare(left=a, op=op, right=b):
-            return _OPS[op](eval_expr(a, env), eval_expr(b, env))
-        case IfElse(condition=c, then_branch=t, else_branch=f):
-            return eval_expr(t, env) if eval_expr(c, env) else eval_expr(f, env)
-        case And(left=a, right=b):
-            return eval_expr(a, env) and eval_expr(b, env)
-        case Or(left=a, right=b):
-            return eval_expr(a, env) or eval_expr(b, env)
+        case Const(value=value):
+            return value
+        case Var(name=name):
+            return env[name]
+        case Add(left=left, right=right):
+            return eval_expr(left, env) + eval_expr(right, env)
+        case Sub(left=left, right=right):
+            return eval_expr(left, env) - eval_expr(right, env)
+        case Mul(left=left, right=right):
+            return eval_expr(left, env) * eval_expr(right, env)
+        case Compare(left=left, op=operator, right=right):
+            return _OPERATOR_FUNCTIONS[operator](eval_expr(left, env), eval_expr(right, env))
+        case IfElse(condition=condition, then_branch=then_branch, else_branch=else_branch):
+            return eval_expr(then_branch, env) if eval_expr(condition, env) else eval_expr(else_branch, env)
+        case And(left=left, right=right):
+            return eval_expr(left, env) and eval_expr(right, env)
+        case Or(left=left, right=right):
+            return eval_expr(left, env) or eval_expr(right, env)
         case _:
             raise TypeError(f"Unknown expression node: {type(expr)}")

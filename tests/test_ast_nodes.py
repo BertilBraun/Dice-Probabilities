@@ -1,6 +1,6 @@
 import pytest
 from dice.ast_nodes import (
-    Const, Var, Die, Add, Mul, Sub, Compare, IfElse, And, Or
+    Const, Var, Die, Add, Mul, Sub, Compare, IfElse, And, Or, VALID_OPS
 )
 
 
@@ -59,7 +59,7 @@ class TestSub:
 
 
 class TestCompare:
-    @pytest.mark.parametrize("op", ["<", ">", "<=", ">=", "==", "!="])
+    @pytest.mark.parametrize("op", list(VALID_OPS))
     def test_valid_ops(self, op):
         node = Compare(Var("X"), op, Const(3))
         assert node.op == op
