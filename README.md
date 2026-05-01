@@ -2,9 +2,16 @@
 
 When you roll two dice and the result of one die affects what the other die contributes, standard probability tables break down. This tool handles those cases exactly.
 
-The core idea: bind dice rolls to named variables, then write an expression over those variables. The engine enumerates every combination of outcomes, evaluates the expression for each, and accumulates exact probabilities.
+The core idea: bind dice rolls to named variables via functions, then write expressions over those variables. The engine enumerates every combination of outcomes, evaluates the expression for each, and accumulates exact probabilities.
 
-For example, `e(X, Y): X + Y > 6 -> 2*X | X - Y; e(d6, d6)` asks: roll two d6s — if their sum exceeds 6, score double the first die; otherwise score the difference. The answer isn't a single number but a full distribution, because X and Y appear in both the condition and the result branches.
+For example:
+
+```text
+f(X, Y): X + Y > 6 -> 2*X | X - Y
+f(d6, d6)
+```
+
+This asks: roll two d6s — if their sum exceeds 6, score double the first die; otherwise score the difference. The answer isn't a single number but a full distribution, because X and Y appear in both the condition and the result branches.
 
 ```text
 -4: 0.56%    -3: 1.39%    -2: 2.50%    ...
@@ -12,7 +19,15 @@ For example, `e(X, Y): X + Y > 6 -> 2*X | X - Y; e(d6, d6)` asks: roll two d6s �
 (E): 3.78
 ```
 
-The same mechanism handles arbitrary nesting: `X > 3 -> (Y > 3 -> X*Y | X) | Y` — any dependent thresholds where the payout depends on which branch fired. Every possible combination of rolls is considered; the result is always exact, never sampled.
+Functions compose, and each call is independent:
+
+```text
+bonus(X): X + d6
+attack(X): bonus(X) + bonus(X)
+attack(d6)
+```
+
+Here `attack(d6)` expands to `(arg + d6_1) + (arg + d6_2)` — the argument die is rolled once and shared, while the `d6` inside `bonus` is a fresh independent roll on each call. Every possible combination of rolls is considered; the result is always exact, never sampled.
 
 ## Installation
 
@@ -28,28 +43,17 @@ Requires Python 3.10+.
 python -m dice "EXPRESSION"
 ```
 
-### Examples
+Multi-line programs can be passed as a single quoted string:
 
 ```bash
-# Single die
-python -m dice "d6"
-
-# Sum of two dice
-python -m dice "d6 + d6"
-
-# Conditional threshold
-python -m dice "e(X): X > 3 -> X | 0; e(d6)"
-
-# Boolean condition
-python -m dice "e(X, Y): X > 3 && Y > 3 -> X + Y | 0; e(d6, d6)"
-
-# Nested conditional
-python -m dice "e(X, Y): X > 3 -> (Y > 3 -> X*Y | X) | Y; e(d6, d6)"
+python -m dice "bonus(X): X + d6
+attack(X): bonus(X) + bonus(X)
+attack(d6)"
 ```
 
 **Output format** — one line per outcome sorted ascending, then the expected value:
 
-```
+```text
 0: 50.00%
 4: 16.67%
 5: 16.67%
@@ -61,39 +65,53 @@ python -m dice "e(X, Y): X > 3 -> (Y > 3 -> X*Y | X) | Y; e(d6, d6)"
 
 ## Expression Syntax
 
-There are two forms: **named** and **bare**.
-
-### Named form
+A program is a sequence of **function definitions** followed by exactly one **expression** to evaluate. Statements are separated by newlines or `;`.
 
 ```
-e(VAR, ...): EXPR; e(dN, ...)
+name(param, ...): expr
+name(param, ...): expr
+final_expr
 ```
 
-Declares named variables and binds each to a die.
+### Function definitions
 
 ```
-e(X, Y): X + Y > 6 -> X*2 + Y | X + 2*Y; e(d6, d6)
+threshold(X): X > 3 -> X | 0
+add(X, Y): X + Y
+combo(X, Y): threshold(X) + add(X, Y)
 ```
 
-### Bare form
+Each parameter is bound **once** at the call site. If a parameter appears multiple times in the body, all occurrences see the same roll. Inline dice in function bodies (`dN`) are fresh and independent on every call.
 
-An expression with inline dice — no wrapper needed.
+### Final expression
+
+The last statement is the expression to evaluate — a function call or any bare expression:
 
 ```
+threshold(d6)
+add(d6, d4)
 d6 + d6
-d6 > 3 -> d4 | 0
-d6 > 3 && d6 > 3 -> 1 | 0
 ```
 
-> **Important:** each `dN` occurrence is an independent roll. `d6 > 3 -> d6 | 0` uses *two separate dice* — one for the condition and one for the result. To reuse the same roll, use the named form: `e(X): X > 3 -> X | 0; e(d6)`.
+### Bare expressions
+
+No function definitions are required. Inline dice work directly:
+
+```bash
+python -m dice "d6 + d6"
+python -m dice "d6 > 3 -> d4 | 0"
+```
+
+Each `dN` occurrence is an independent roll. To reuse the same roll, bind it to a parameter.
 
 ---
 
 ## Grammar
 
-```
-full    := "e(" NAME,... ")" ":" expr ";" "e(" dN,... ")"
-         | expr
+```text
+program := (definition ";"|"\n")* expr
+
+definition := NAME "(" NAME ("," NAME)* ")" ":" expr
 
 expr    := ifelse
 ifelse  := orelse ("->" orelse "|" orelse)?
@@ -102,7 +120,7 @@ andexpr := compare ("&&" compare)*
 compare := add (("<" | ">" | "<=" | ">=" | "==" | "!=") add)?
 add     := mul (("+" | "-") mul)*
 mul     := atom ("*" atom)*
-atom    := INT | NAME | dN | "(" expr ")"
+atom    := INT | NAME | dN | NAME "(" expr ("," expr)* ")" | "(" expr ")"
 ```
 
 ### Operator precedence (tightest to loosest)
@@ -115,11 +133,7 @@ atom    := INT | NAME | dN | "(" expr ")"
 | Boolean OR  | `\|\|`                      |
 | Conditional | `cond -> then \| else`      |
 
-Parentheses override precedence at any level, including nesting conditionals:
-
-```
-e(X, Y): X > 3 -> (Y > 3 -> X*Y | X) | Y; e(d6, d6)
-```
+Parentheses override precedence at any level.
 
 ---
 
@@ -132,8 +146,6 @@ e(X, Y): X > 3 -> (Y > 3 -> X*Y | X) | Y; e(d6, d6)
 | `d6`   | A fair six-sided die (faces 1–6)     |
 | `d20`  | A fair twenty-sided die (faces 1–20) |
 | `dN`   | Any positive integer N               |
-
-In the named form, dice appear in the `e(dN, ...)` binding list. In expressions (named or bare), `dN` tokens are also allowed inline as anonymous dice.
 
 ### Arithmetic
 
@@ -148,15 +160,10 @@ X * Y        # multiplication
 ### Comparisons
 
 ```
-X > 3        # greater than
-X < Y        # less than
-X >= 3       # greater than or equal
-X <= Y       # less than or equal
-X == Y       # equal
-X != 3       # not equal
+X > 3    X < Y    X >= 3    X <= Y    X == Y    X != 3
 ```
 
-Results are boolean (True/False), usable as conditional tests.
+Results are boolean (0 or 1), usable in conditional tests.
 
 ### Boolean operators
 
@@ -167,18 +174,13 @@ X > 4 || Y > 4       # at least one must be true
 
 `&&` binds tighter than `||`. Both bind tighter than `->`.
 
-```
-# A || B && C  parses as  A || (B && C)
-e(X, Y, Z): X > 4 || Y > 3 && Z > 3 -> X + Y + Z | 0; e(d6, d6, d6)
-```
-
 ### Conditional expression
 
 ```
 cond -> then | else
 ```
 
-Evaluates `cond`; if truthy, returns `then`, otherwise `else`. Both branches can be arbitrary expressions including nested conditionals (wrap inner ones in parentheses):
+Evaluates `cond`; if truthy returns `then`, otherwise `else`. Branches can be arbitrary expressions including nested conditionals (wrap inner ones in parentheses):
 
 ```
 X > 3 -> (Y > 3 -> X*Y | X) | Y
@@ -188,47 +190,53 @@ X > 3 -> (Y > 3 -> X*Y | X) | Y
 
 ## Architecture
 
-The evaluator is built as a clean pipeline:
+The evaluator is built as a pipeline:
 
 ```
 text
   ↓  parse()
+     split into statements
+     build function registry
+     expand Call nodes (macro substitution)
+     extract Die nodes → named variables
 (Expr AST, var_domains)
   ↓  build_pmf()
 dict[int, float]   ← PMF
 ```
 
+### How function expansion works
+
+Function calls are resolved at parse time by macro substitution — the engine never sees them. When `f(d6)` is called:
+
+1. The `d6` argument is extracted to a fresh variable (e.g. `_d0`) **before** substitution, so every occurrence of the parameter in the body refers to the same roll.
+2. The body is substituted with `param → _d0`.
+3. Any `dN` tokens inside the body become fresh variables at this point.
+4. The result is expanded recursively for nested calls.
+
+This guarantees that `double(X): X + X; double(d6)` produces `{2,4,6,8,10,12}` each with P=1/6 (one roll, doubled) — not the distribution of two independent dice.
+
 ### Modules
 
-| Module         | Responsibility                                                                                            |
-| -------------- | --------------------------------------------------------------------------------------------------------- |
-| `ast_nodes.py` | Frozen dataclass AST nodes (`Const`, `Var`, `Die`, `Add`, `Sub`, `Mul`, `Compare`, `IfElse`, `And`, `Or`) |
-| `evaluator.py` | `eval_expr(expr, env)` — pure evaluation given a concrete variable assignment                             |
-| `engine.py`    | `build_pmf(expr, domains)` — joint enumeration over all variable assignments                              |
-| `parser.py`    | Recursive-descent parser; `parse()` and `parse_expr()`                                                    |
-| `cli.py`       | Command-line interface                                                                                    |
+| Module         | Responsibility                                                                          |
+| -------------- | --------------------------------------------------------------------------------------- |
+| `ast_nodes.py` | Frozen dataclass AST nodes for all expression types                                     |
+| `evaluator.py` | `eval_expr(expr, env)` — pure evaluation given a concrete variable assignment           |
+| `engine.py`    | `build_pmf(expr, domains)` — joint enumeration over all variable assignments            |
+| `parser.py`    | Recursive-descent parser, macro expansion, die extraction; `parse()` and `parse_expr()` |
+| `cli.py`       | Command-line interface                                                                  |
 
-### How it works
+### Complexity
 
-The engine enumerates the Cartesian product of all variable domains. For each assignment it evaluates the expression and accumulates the probability:
-
-```python
-for assignment in product(domains):
-    p = product(probabilities)
-    value = eval_expr(expr, assignment)
-    result[value] += p
-```
-
-This is **exact** (no sampling) and **exponential** in the number of variables — `O(kⁿ)` where `k` is die size and `n` is variable count. For typical DnD expressions (2–5 dice) it is instant.
+Exact enumeration — `O(kⁿ)` where `k` is die size and `n` is the number of distinct die variables after expansion. For typical DnD expressions this is instant.
 
 ---
 
 ## Known Limitations
 
-- No division or modulo (no AST nodes for them)
+- No division or modulo
 - No unary minus — use `0 - X` as a workaround
-- No boolean short-circuit in the PMF sense: all branches are always evaluated structurally (though `eval_expr` itself does short-circuit `&&`/`||` correctly)
-- Anonymous dice (`dN`) cannot be "the same roll" — each occurrence is an independent variable. Use the named form to reuse a roll across the expression.
+- Functions must be defined before use (top-to-bottom only)
+- No recursion (detected and rejected at parse time)
 
 ---
 
@@ -238,4 +246,4 @@ This is **exact** (no sampling) and **exponential** in the number of variables �
 pytest tests/ -v
 ```
 
-328 tests covering: AST nodes, evaluator, engine (PMF axioms, known expected values, symmetry), parser (precedence, all operators, error cases), integration (full pipeline, property checks, CLI output), and extreme multi-variable cases.
+352 tests covering: AST nodes, evaluator, engine (PMF axioms, known expected values, symmetry), parser (precedence, all operators, error cases), functions (binding semantics, independence, composition, error cases), integration (full pipeline, property checks, CLI output), and extreme multi-variable cases.
