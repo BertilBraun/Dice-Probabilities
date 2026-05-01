@@ -66,3 +66,9 @@ class And(Expr):
 class Or(Expr):
     left: Expr
     right: Expr
+
+
+@dataclass(frozen=True)
+class Call(Expr):
+    name: str
+    args: tuple[Expr, ...]

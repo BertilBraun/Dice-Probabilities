@@ -1,6 +1,6 @@
 from __future__ import annotations
 import operator as _op
-from dice.ast_nodes import Expr, Const, Var, Add, Sub, Mul, Compare, IfElse, And, Or
+from dice.ast_nodes import Expr, Const, Var, Add, Sub, Mul, Compare, IfElse, And, Or, Call
 
 Env = dict[str, int]
 
@@ -34,5 +34,7 @@ def eval_expr(expr: Expr, env: Env) -> int:
             return eval_expr(left, env) and eval_expr(right, env)
         case Or(left=left, right=right):
             return eval_expr(left, env) or eval_expr(right, env)
+        case Call():
+            raise TypeError("Unexpanded function call reached the evaluator; use parse() to expand first")
         case _:
             raise TypeError(f"Unknown expression node: {type(expr)}")

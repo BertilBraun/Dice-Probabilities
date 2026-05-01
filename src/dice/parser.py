@@ -3,7 +3,7 @@ import re
 from enum import auto, Enum
 from typing import NamedTuple
 from dice.ast_nodes import (
-    Expr, Const, Var, Die, Add, Sub, Mul, Compare, IfElse, And, Or, VALID_OPS
+    Expr, Const, Var, Die, Add, Sub, Mul, Compare, IfElse, And, Or, Call, VALID_OPS
 )
 from dice.engine import die_domain, Domain
 
@@ -29,14 +29,14 @@ class Token(NamedTuple):
 # ── Lexer ─────────────────────────────────────────────────────────────────────
 
 _TOKEN_PATTERN = re.compile(
-    r"\s*(?:"
+    r"[ \t]*(?:"
     r"(->|\|\||&&)|"               # ARROW / OR / AND  (two-char, must precede single-char)
     r"(>=|<=|==|!=)|"              # TWO-CHAR CMP OPS
     r"([><])|"                     # SINGLE-CHAR CMP
     r"(\d+)|"                      # INT
     r"([A-Za-z][A-Za-z0-9_]*)|"   # NAME
     r"([+\-*|(),;:])"              # PUNCTUATION (bare | is here, after ||)
-    r")\s*"
+    r")[ \t]*"
 )
 
 _INLINE_DIE_PATTERN = re.compile(r"^d(\d+)$")
@@ -165,6 +165,17 @@ class _Parser:
             die_match = _INLINE_DIE_PATTERN.match(token.value)
             if die_match:
                 return Die(int(die_match.group(1)))
+            # Function call: NAME(arg, ...)
+            if self._peek() == Token(TokenKind.PUNCT, "("):
+                self._consume()
+                args: list[Expr] = []
+                if self._peek() != Token(TokenKind.PUNCT, ")"):
+                    args.append(self.parse_expr())
+                    while self._peek() == Token(TokenKind.PUNCT, ","):
+                        self._consume()
+                        args.append(self.parse_expr())
+                self._consume(TokenKind.PUNCT, ")")
+                return Call(token.value, tuple(args))
             return Var(token.value)
         if token.kind == TokenKind.PUNCT and token.value == "(":
             self._consume()
@@ -173,55 +184,186 @@ class _Parser:
             return node
         raise SyntaxError(f"Unexpected token {token.kind.name!r} ({token.value!r})")
 
-    # ── full e(...): ...; e(...) syntax ──────────────────────────────────────
 
-    def parse_full(self) -> tuple[Expr, dict[str, Domain]]:
-        # e( var_list ):
-        self._consume(TokenKind.NAME, "e")
-        self._consume(TokenKind.PUNCT, "(")
-        var_names: list[str] = [self._consume(TokenKind.NAME).value]
-        while self._peek() == Token(TokenKind.PUNCT, ","):
-            self._consume()
-            var_names.append(self._consume(TokenKind.NAME).value)
-        self._consume(TokenKind.PUNCT, ")")
-        self._consume(TokenKind.PUNCT, ":")
+# ── Statement splitting ───────────────────────────────────────────────────────
 
-        # expression (may contain inline Die nodes)
-        expr = self.parse_expr()
+def _split_statements(tokens: list[Token]) -> list[list[Token]]:
+    """Split a token list into per-statement groups at PUNCT ';' boundaries."""
+    statements: list[list[Token]] = []
+    current: list[Token] = []
+    for token in tokens:
+        if token.kind == TokenKind.EOF:
+            break
+        elif token == Token(TokenKind.PUNCT, ";"):
+            if current:
+                statements.append(current)
+                current = []
+        else:
+            current.append(token)
+    if current:
+        statements.append(current)
+    return statements
 
-        # ; e( die_list )
-        self._consume(TokenKind.PUNCT, ";")
-        self._consume(TokenKind.NAME, "e")
-        self._consume(TokenKind.PUNCT, "(")
-        die_sizes: list[int] = [self._parse_die_ref()]
-        while self._peek() == Token(TokenKind.PUNCT, ","):
-            self._consume()
-            die_sizes.append(self._parse_die_ref())
-        self._consume(TokenKind.PUNCT, ")")
 
-        if len(var_names) != len(die_sizes):
-            raise ValueError(
-                f"Number of variables ({len(var_names)}) does not match "
-                f"number of dice ({len(die_sizes)})"
+def _is_function_definition(stmt_tokens: list[Token]) -> bool:
+    """Return True if stmt_tokens starts with the pattern NAME(NAME,...):"""
+    if len(stmt_tokens) < 3:
+        return False
+    if stmt_tokens[0].kind != TokenKind.NAME:
+        return False
+    if stmt_tokens[1] != Token(TokenKind.PUNCT, "("):
+        return False
+    pos = 2
+    # Skip zero or more NAME tokens separated by commas
+    if pos < len(stmt_tokens) and stmt_tokens[pos].kind == TokenKind.NAME:
+        pos += 1
+        while pos < len(stmt_tokens) and stmt_tokens[pos] == Token(TokenKind.PUNCT, ","):
+            pos += 1
+            if pos >= len(stmt_tokens) or stmt_tokens[pos].kind != TokenKind.NAME:
+                return False
+            pos += 1
+    if pos >= len(stmt_tokens) or stmt_tokens[pos] != Token(TokenKind.PUNCT, ")"):
+        return False
+    pos += 1
+    return pos < len(stmt_tokens) and stmt_tokens[pos] == Token(TokenKind.PUNCT, ":")
+
+
+def _parse_function_def(stmt_tokens: list[Token]) -> tuple[str, list[str], Expr]:
+    """Parse NAME(params): expr and return (name, param_names, body)."""
+    parser = _Parser(stmt_tokens + [Token(TokenKind.EOF, "")])
+    func_name = parser._consume(TokenKind.NAME).value
+    parser._consume(TokenKind.PUNCT, "(")
+    param_names: list[str] = []
+    if parser._peek().kind == TokenKind.NAME:
+        param_names.append(parser._consume(TokenKind.NAME).value)
+        while parser._peek() == Token(TokenKind.PUNCT, ","):
+            parser._consume()
+            param_names.append(parser._consume(TokenKind.NAME).value)
+    parser._consume(TokenKind.PUNCT, ")")
+    parser._consume(TokenKind.PUNCT, ":")
+    body = parser.parse_expr()
+    if not parser._at_end():
+        trailing = parser._peek()
+        raise SyntaxError(
+            f"Unexpected trailing token in function body: {trailing.kind.name!r} ({trailing.value!r})"
+        )
+    return func_name, param_names, body
+
+
+def _parse_statement_expr(stmt_tokens: list[Token]) -> Expr:
+    """Parse a statement as a bare expression."""
+    parser = _Parser(stmt_tokens + [Token(TokenKind.EOF, "")])
+    expr = parser.parse_expr()
+    if not parser._at_end():
+        trailing = parser._peek()
+        raise SyntaxError(f"Unexpected trailing token: {trailing.kind.name!r} ({trailing.value!r})")
+    return expr
+
+
+# ── Substitution ──────────────────────────────────────────────────────────────
+
+def _substitute(expr: Expr, substitution: dict[str, Expr]) -> Expr:
+    """Replace Var nodes whose names appear in substitution."""
+    match expr:
+        case Var(name=name):
+            return substitution.get(name, expr)
+        case Call(name=name, args=args):
+            return Call(name, tuple(_substitute(arg, substitution) for arg in args))
+        case Add(left=left, right=right):
+            return Add(_substitute(left, substitution), _substitute(right, substitution))
+        case Sub(left=left, right=right):
+            return Sub(_substitute(left, substitution), _substitute(right, substitution))
+        case Mul(left=left, right=right):
+            return Mul(_substitute(left, substitution), _substitute(right, substitution))
+        case Compare(left=left, op=operator, right=right):
+            return Compare(_substitute(left, substitution), operator, _substitute(right, substitution))
+        case IfElse(condition=condition, then_branch=then_branch, else_branch=else_branch):
+            return IfElse(
+                _substitute(condition, substitution),
+                _substitute(then_branch, substitution),
+                _substitute(else_branch, substitution),
             )
+        case And(left=left, right=right):
+            return And(_substitute(left, substitution), _substitute(right, substitution))
+        case Or(left=left, right=right):
+            return Or(_substitute(left, substitution), _substitute(right, substitution))
+        case _:  # Const, Die — no variables
+            return expr
 
-        named_domains = {var_name: die_domain(sides) for var_name, sides in zip(var_names, die_sizes)}
 
-        die_counter = [0]
-        inline_domains: dict[str, Domain] = {}
-        expr = _extract_dice(expr, die_counter, inline_domains)
+# ── Function expansion ────────────────────────────────────────────────────────
 
-        return expr, {**named_domains, **inline_domains}
+FunctionRegistry = dict[str, tuple[list[str], Expr]]
 
-    def _parse_die_ref(self) -> int:
-        token = self._consume(TokenKind.NAME)
-        if token.value == "d":
-            sides_token = self._consume(TokenKind.INT)
-            return int(sides_token.value)
-        die_match = _INLINE_DIE_PATTERN.match(token.value)
-        if die_match:
-            return int(die_match.group(1))
-        raise SyntaxError(f"Expected die reference like 'd6', got {token.value!r}")
+
+def _expand(
+    expr: Expr,
+    registry: FunctionRegistry,
+    die_counter: list[int],
+    domains: dict[str, Domain],
+    call_stack: frozenset[str] = frozenset(),
+) -> Expr:
+    """Resolve all Call nodes via macro expansion with pre-extracted die arguments."""
+    match expr:
+        case Call(name=name, args=args):
+            if name not in registry:
+                raise NameError(f"Undefined function: {name!r}")
+            if name in call_stack:
+                raise RecursionError(f"Recursive function call: {name!r}")
+            param_names, body = registry[name]
+            if len(args) != len(param_names):
+                raise ValueError(
+                    f"Function {name!r} takes {len(param_names)} argument(s), got {len(args)}"
+                )
+            # Expand each argument, then pre-extract its dice so the parameter
+            # maps to a single variable even when used multiple times in the body
+            clean_args: list[Expr] = []
+            for arg in args:
+                expanded_arg = _expand(arg, registry, die_counter, domains, call_stack)
+                clean_arg = _extract_dice(expanded_arg, die_counter, domains)
+                clean_args.append(clean_arg)
+            substitution = dict(zip(param_names, clean_args))
+            substituted_body = _substitute(body, substitution)
+            return _expand(substituted_body, registry, die_counter, domains, call_stack | {name})
+        case Add(left=left, right=right):
+            return Add(
+                _expand(left, registry, die_counter, domains, call_stack),
+                _expand(right, registry, die_counter, domains, call_stack),
+            )
+        case Sub(left=left, right=right):
+            return Sub(
+                _expand(left, registry, die_counter, domains, call_stack),
+                _expand(right, registry, die_counter, domains, call_stack),
+            )
+        case Mul(left=left, right=right):
+            return Mul(
+                _expand(left, registry, die_counter, domains, call_stack),
+                _expand(right, registry, die_counter, domains, call_stack),
+            )
+        case Compare(left=left, op=operator, right=right):
+            return Compare(
+                _expand(left, registry, die_counter, domains, call_stack),
+                operator,
+                _expand(right, registry, die_counter, domains, call_stack),
+            )
+        case IfElse(condition=condition, then_branch=then_branch, else_branch=else_branch):
+            return IfElse(
+                _expand(condition, registry, die_counter, domains, call_stack),
+                _expand(then_branch, registry, die_counter, domains, call_stack),
+                _expand(else_branch, registry, die_counter, domains, call_stack),
+            )
+        case And(left=left, right=right):
+            return And(
+                _expand(left, registry, die_counter, domains, call_stack),
+                _expand(right, registry, die_counter, domains, call_stack),
+            )
+        case Or(left=left, right=right):
+            return Or(
+                _expand(left, registry, die_counter, domains, call_stack),
+                _expand(right, registry, die_counter, domains, call_stack),
+            )
+        case _:  # Const, Var, Die — leaves, nothing to expand
+            return expr
 
 
 # ── Die extraction ────────────────────────────────────────────────────────────
@@ -237,6 +379,8 @@ def _extract_dice(
             die_counter[0] += 1
             domains[var_name] = die_domain(sides)
             return Var(var_name)
+        case Call():
+            raise TypeError("Unexpanded Call node in _extract_dice; expand before extracting dice")
         case Add(left=left, right=right):
             return Add(_extract_dice(left, die_counter, domains), _extract_dice(right, die_counter, domains))
         case Sub(left=left, right=right):
@@ -262,25 +406,39 @@ def _extract_dice(
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def parse(text: str) -> tuple[Expr, dict[str, Domain]]:
-    tokens = _tokenise(text)
-    parser = _Parser(tokens)
-    if text.strip().startswith("e("):
-        return parser.parse_full()
-    # Bare expression form
-    expr = parser.parse_expr()
-    if not parser._at_end():
-        trailing_token = parser._peek()
-        raise SyntaxError(f"Unexpected trailing token {trailing_token.kind.name!r} ({trailing_token.value!r})")
+    # Newlines are statement separators, equivalent to semicolons
+    normalized = text.replace("\n", ";")
+    tokens = _tokenise(normalized)
+    statement_token_lists = _split_statements(tokens)
+
+    if not statement_token_lists:
+        raise SyntaxError("Empty input")
+
+    registry: FunctionRegistry = {}
+    for stmt_tokens in statement_token_lists[:-1]:
+        if not _is_function_definition(stmt_tokens):
+            raise SyntaxError(
+                "Non-final statements must be function definitions of the form name(params): expr"
+            )
+        func_name, param_names, body = _parse_function_def(stmt_tokens)
+        if func_name in registry:
+            raise ValueError(f"Duplicate function definition: {func_name!r}")
+        registry[func_name] = (param_names, body)
+
+    final_expr = _parse_statement_expr(statement_token_lists[-1])
+
     die_counter = [0]
     domains: dict[str, Domain] = {}
-    expr = _extract_dice(expr, die_counter, domains)
-    return expr, domains
+    expanded = _expand(final_expr, registry, die_counter, domains)
+    expanded = _extract_dice(expanded, die_counter, domains)
+    return expanded, domains
 
 
 def parse_expr(text: str) -> Expr:
+    """Parse a single expression, returning raw AST (Die and Call nodes unexpanded)."""
     if not text.strip():
         raise SyntaxError("Empty expression")
-    tokens = _tokenise(text)
+    tokens = _tokenise(text.replace("\n", ";"))
     parser = _Parser(tokens)
     node = parser.parse_expr()
     if not parser._at_end():
