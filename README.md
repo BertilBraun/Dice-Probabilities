@@ -225,16 +225,27 @@ This guarantees that `double(X): X + X; double(d6)` produces `{2,4,6,8,10,12}` e
 | `parser.py`    | Recursive-descent parser, macro expansion, die extraction; `parse()` and `parse_expr()` |
 | `cli.py`       | Command-line interface                                                                  |
 
+### How build_pmf works
+
+After expansion, every die in the expression is a distinct named variable with a domain of `(face, probability)` pairs. `build_pmf` takes the Cartesian product of all domains, evaluates the expression for each combination, and accumulates probability into a result map:
+
+```python
+for outcome in product(domain_lists):
+    variable_values = {name: face for name, (face, _) in zip(variable_names, outcome)}
+    joint_probability = product(p for _, p in outcome)
+    result[eval_expr(expr, variable_values)] += joint_probability
+```
+
+Each outcome is weighted by the product of its individual face probabilities (uniform dice all have p=1/N, so the joint probability is 1/N₁·N₂·…). The result is an exact PMF — no sampling, no floating-point shortcuts.
+
 ### Complexity
 
-Exact enumeration — `O(kⁿ)` where `k` is die size and `n` is the number of distinct die variables after expansion. For typical DnD expressions this is instant.
+Exact enumeration is `O(kⁿ)` where `k` is die size and `n` is the number of distinct die variables after expansion. For typical DnD expressions (2–5 dice) this is instant.
 
 ---
 
 ## Known Limitations
 
-- No division or modulo
-- No unary minus — use `0 - X` as a workaround
 - Functions must be defined before use (top-to-bottom only)
 - No recursion (detected and rejected at parse time)
 
