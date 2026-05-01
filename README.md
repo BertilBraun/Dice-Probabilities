@@ -248,6 +248,9 @@ Exact enumeration is `O(kⁿ)` where `k` is die size and `n` is the number of di
 
 - Functions must be defined before use (top-to-bottom only)
 - No recursion (detected and rejected at parse time)
+- Exponential blow-up in the number of dice: `build_pmf` enumerates the full Cartesian product of all die variables, so complexity is `O(kⁿ)` where `n` is the number of distinct dice after expansion. An expression like `d6 > 5 -> 50d20 | 0` is intractable even though the result is conceptually simple.
+
+  The correct fix is to preserve exact results — an alternative that computes distributions symbolically (propagating PMFs rather than concrete values through the AST) would handle independent subexpressions via convolution, reducing `n`-dice addition to `O(n · k²)` instead of `O(kⁿ)`. The challenge is that variables shared across a conditional's condition and branches require joint enumeration to remain correct; a dependency analysis pass over the AST would identify which subgraphs are truly independent and apply convolution only there, falling back to enumeration where variables are shared. Without that analysis, the symbolic approach silently produces wrong results for shared-variable expressions — trading correctness for feasibility.
 
 ---
 
