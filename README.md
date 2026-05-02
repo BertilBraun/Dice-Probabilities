@@ -25,30 +25,7 @@ attack(d6)
 
 Here `attack(d6)` expands to `(arg + d6_1) + (arg + d6_2)` — the argument die is rolled once and shared, while the `d6` inside `bonus` is a fresh independent roll on each call. Every possible combination of rolls is considered; the result is always exact, never sampled.
 
-## Installation
-
-```bash
-pip install -e .
-pip install -e ".[plot]"   # also install matplotlib for --render mat
-```
-
-Requires Python 3.10+.
-
-## Usage
-
-```bash
-python -m dice "EXPRESSION"
-```
-
-Multi-line programs can be passed as a single quoted string:
-
-```bash
-python -m dice "bonus(X): X + d6
-attack(X): bonus(X) + bonus(X)
-attack(d6)"
-```
-
-### Output modes
+## Output modes
 
 **Default** — one line per outcome sorted ascending, then the expected value:
 
@@ -88,131 +65,6 @@ python -m dice "d6 + d6" --render mat
 ```
 
 ![Matplotlib bar chart of d6+d6 distribution, showing outcomes 2–12 with a peak at 7 and expected value 7](documentation/mat_example.png)
-
----
-
-## Expression Syntax
-
-A program is a sequence of **function definitions** followed by exactly one **expression** to evaluate. Statements are separated by newlines or `;`.
-
-```
-name(param, ...): expr
-name(param, ...): expr
-final_expr
-```
-
-### Function definitions
-
-```
-threshold(X): X > 3 -> X | 0
-add(X, Y): X + Y
-combo(X, Y): threshold(X) + add(X, Y)
-```
-
-Each parameter is bound **once** at the call site. If a parameter appears multiple times in the body, all occurrences see the same roll. Inline dice in function bodies (`dN`) are fresh and independent on every call.
-
-### Final expression
-
-The last statement is the expression to evaluate — a function call or any bare expression:
-
-```
-threshold(d6)
-add(d6, d4)
-d6 + d6
-```
-
-### Bare expressions
-
-No function definitions are required. Inline dice work directly:
-
-```bash
-python -m dice "d6 + d6"
-python -m dice "d6 > 3 -> d4 | 0"
-```
-
-Each `dN` occurrence is an independent roll. To reuse the same roll, bind it to a parameter.
-
----
-
-## Grammar
-
-```text
-program := (definition ";"|"\n")* expr
-
-definition := NAME "(" NAME ("," NAME)* ")" ":" expr
-
-expr    := ifelse
-ifelse  := orelse ("->" orelse "|" orelse)?
-orelse  := andexpr ("||" andexpr)*
-andexpr := compare ("&&" compare)*
-compare := add (("<" | ">" | "<=" | ">=" | "==" | "!=") add)?
-add     := mul (("+" | "-") mul)*
-mul     := atom ("*" atom)*
-atom    := INT | NAME | dN | NAME "(" expr ("," expr)* ")" | "(" expr ")"
-```
-
-### Operator precedence (tightest to loosest)
-
-| Level       | Operators                   |
-| ----------- | --------------------------- |
-| Arithmetic  | `*` then `+` `-`            |
-| Comparison  | `<` `>` `<=` `>=` `==` `!=` |
-| Boolean AND | `&&`                        |
-| Boolean OR  | `\|\|`                      |
-| Conditional | `cond -> then \| else`      |
-
-Parentheses override precedence at any level.
-
----
-
-## Syntax Reference
-
-### Dice
-
-| Syntax | Meaning                              |
-| ------ | ------------------------------------ |
-| `d6`   | A fair six-sided die (faces 1–6)     |
-| `d20`  | A fair twenty-sided die (faces 1–20) |
-| `dN`   | Any positive integer N               |
-
-### Arithmetic
-
-```
-X + Y        # addition
-X - Y        # subtraction
-X * Y        # multiplication
-2*X + 1      # precedence: multiplication before addition
-2*(X + 1)    # parentheses override precedence
-```
-
-### Comparisons
-
-```
-X > 3    X < Y    X >= 3    X <= Y    X == Y    X != 3
-```
-
-Results are boolean (0 or 1), usable in conditional tests.
-
-### Boolean operators
-
-```
-X > 3 && Y > 3       # both must be true
-X > 4 || Y > 4       # at least one must be true
-```
-
-`&&` binds tighter than `||`. Both bind tighter than `->`.
-
-### Conditional expression
-
-```
-cond -> then | else
-```
-
-Evaluates `cond`; if truthy returns `then`, otherwise `else`. Branches can be arbitrary expressions including nested conditionals (wrap inner ones in parentheses):
-
-```
-X > 3 -> (Y > 3 -> X*Y | X) | Y
-```
 
 ---
 
@@ -367,6 +219,155 @@ Each outcome is weighted by the product of its individual face probabilities (un
 ### Complexity
 
 Exact enumeration is `O(kⁿ)` where `k` is die size and `n` is the number of distinct die variables after expansion. For typical DnD expressions (2–5 dice) this is instant.
+
+---
+
+## Installation
+
+```bash
+pip install -e .
+pip install -e ".[plot]"   # also install matplotlib for --render mat
+```
+
+Requires Python 3.10+.
+
+## Usage
+
+```bash
+python -m dice "EXPRESSION"
+```
+
+Multi-line programs can be passed as a single quoted string:
+
+```bash
+python -m dice "bonus(X): X + d6
+attack(X): bonus(X) + bonus(X)
+attack(d6)"
+```
+
+## Expression Syntax
+
+A program is a sequence of **function definitions** followed by exactly one **expression** to evaluate. Statements are separated by newlines or `;`.
+
+```
+name(param, ...): expr
+name(param, ...): expr
+final_expr
+```
+
+### Function definitions
+
+```
+threshold(X): X > 3 -> X | 0
+add(X, Y): X + Y
+combo(X, Y): threshold(X) + add(X, Y)
+```
+
+Each parameter is bound **once** at the call site. If a parameter appears multiple times in the body, all occurrences see the same roll. Inline dice in function bodies (`dN`) are fresh and independent on every call.
+
+### Final expression
+
+The last statement is the expression to evaluate — a function call or any bare expression:
+
+```
+threshold(d6)
+add(d6, d4)
+d6 + d6
+```
+
+### Bare expressions
+
+No function definitions are required. Inline dice work directly:
+
+```bash
+python -m dice "d6 + d6"
+python -m dice "d6 > 3 -> d4 | 0"
+```
+
+Each `dN` occurrence is an independent roll. To reuse the same roll, bind it to a parameter.
+
+---
+
+## Grammar
+
+```text
+program := (definition ";"|"\n")* expr
+
+definition := NAME "(" NAME ("," NAME)* ")" ":" expr
+
+expr    := ifelse
+ifelse  := orelse ("->" orelse "|" orelse)?
+orelse  := andexpr ("||" andexpr)*
+andexpr := compare ("&&" compare)*
+compare := add (("<" | ">" | "<=" | ">=" | "==" | "!=") add)?
+add     := mul (("+" | "-") mul)*
+mul     := atom ("*" atom)*
+atom    := INT | NAME | dN | NAME "(" expr ("," expr)* ")" | "(" expr ")"
+```
+
+### Operator precedence (tightest to loosest)
+
+| Level       | Operators                   |
+| ----------- | --------------------------- |
+| Arithmetic  | `*` then `+` `-`            |
+| Comparison  | `<` `>` `<=` `>=` `==` `!=` |
+| Boolean AND | `&&`                        |
+| Boolean OR  | `\|\|`                      |
+| Conditional | `cond -> then \| else`      |
+
+Parentheses override precedence at any level.
+
+---
+
+## Syntax Reference
+
+### Dice
+
+| Syntax | Meaning                              |
+| ------ | ------------------------------------ |
+| `d6`   | A fair six-sided die (faces 1–6)     |
+| `d20`  | A fair twenty-sided die (faces 1–20) |
+| `dN`   | Any positive integer N               |
+
+### Arithmetic
+
+```
+X + Y        # addition
+X - Y        # subtraction
+X * Y        # multiplication
+2*X + 1      # precedence: multiplication before addition
+2*(X + 1)    # parentheses override precedence
+```
+
+### Comparisons
+
+```
+X > 3    X < Y    X >= 3    X <= Y    X == Y    X != 3
+```
+
+Results are boolean (0 or 1), usable in conditional tests.
+
+### Boolean operators
+
+```
+X > 3 && Y > 3       # both must be true
+X > 4 || Y > 4       # at least one must be true
+```
+
+`&&` binds tighter than `||`. Both bind tighter than `->`.
+
+### Conditional expression
+
+```
+cond -> then | else
+```
+
+Evaluates `cond`; if truthy returns `then`, otherwise `else`. Branches can be arbitrary expressions including nested conditionals (wrap inner ones in parentheses):
+
+```
+X > 3 -> (Y > 3 -> X*Y | X) | Y
+```
+
 
 ---
 
