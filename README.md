@@ -230,6 +230,39 @@ This guarantees that `double(X): X + X; double(d6)` produces `{2,4,6,8,10,12}` e
 | `parser.py`    | Recursive-descent parser, macro expansion, die extraction; `parse()` and `parse_expr()` |
 | `cli.py`       | Command-line interface                                                                  |
 
+### How simplify works
+
+`simplify` walks the AST bottom-up, threading a `forbidden` variable set top-down. It collapses any subtree whose variables are entirely disjoint from both its sibling's variables and the `forbidden` context. Collapsed subtrees are replaced by a single virtual variable (`_v0`, `_v1`, …) whose domain is the pre-computed PMF.
+
+**Pre-annotation.** Before any collapsing, `simplify` annotates every node with its original variable set (keyed by `id(node)`). This snapshot is needed because after a child is replaced by a virtual `Var`, its identity changes — without the snapshot, the disjointness check would use stale or wrong variable sets.
+
+**The `forbidden` context.** Each recursive call carries the union of variable sets of all sibling subtrees at every ancestor level. This prevents a subtle bug: in `(X+Y) + (X+Z)`, the left child `X+Y` has disjoint internal variables and looks self-contained locally, but `X` is also in the right sibling — collapsing `X+Y` into a virtual variable would discard X's correlation with `X+Z`. The forbidden context catches this by including `vars(right)` when descending into `left`, and vice-versa.
+
+**Binary nodes.** For `BinOp(left, right)`:
+
+1. Read `left_vars` and `right_vars` from the pre-annotation snapshot.
+2. Recurse into each child, passing the other child's original vars (plus the outer `forbidden`) as the new forbidden set.
+3. Collapse if `left_vars ∩ right_vars = ∅` and `(left_vars ∪ right_vars) ∩ forbidden = ∅`.
+4. If collapsing: compute each child's PMF, combine them with the operator-specific function, register the result as a new virtual variable, and remove the consumed originals from the domain map.
+
+**PMF combination per operator:**
+
+| Node | Combination |
+| --- | --- |
+| `Add` | pairwise `a + b` over joint distribution |
+| `Sub` | pairwise `a - b` |
+| `Mul` | pairwise `a * b` |
+| `Compare` | pairwise `int(op(a, b))` |
+| `And` | `P(A != 0) * P(B != 0)` |
+| `Or` | `1 - P(A == 0) * P(B == 0)` |
+| `IfElse` | `p_true * PMF(then) + (1 - p_true) * PMF(else)` |
+
+The pairwise combination (used for arithmetic and comparisons) is a double loop over outcomes — `O(|A| × |B|)` — not Cartesian enumeration. For `n` independent dice this is `O(n · k²)` total, versus `O(kⁿ)` for full enumeration.
+
+**`IfElse` nodes.** The collapse condition is slightly different: the condition subtree must be independent of *both* branches (`cond_vars ∩ (then_vars ∪ else_vars) = ∅`). When true, the condition's PMF is computed, `p_true = Σ P(condition≠0)` is extracted, and the result PMF is `p_true · PMF(then) + (1−p_true) · PMF(else)`. This is the case that makes `d6 > 5 -> 50d20 | 0` fast: the d6 and all 50 d20s are independent, so the entire expression collapses to a single virtual variable.
+
+**Result.** After simplification, `build_pmf` sees only the variables that are genuinely entangled with each other. For most game-table expressions this is zero or one variable remaining.
+
 ### How build_pmf works
 
 After expansion, every die in the expression is a distinct named variable with a domain of `(face, probability)` pairs. `build_pmf` takes the Cartesian product of all domains, evaluates the expression for each combination, and accumulates probability into a result map:

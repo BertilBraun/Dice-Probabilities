@@ -9,11 +9,17 @@
 
 ## Python specifics
 
+- No abbreviations — always use full descriptive names for variables and functions.
 - Use `nonlocal name` for mutable closure state — never the `name = [0]` list trick.
 - Avoid single-character variable names that are visually ambiguous (`l`, `O`, `I`).
 - Prefer `match`/`case` over `isinstance` chains for AST node dispatch.
 - Frozen dataclasses for AST nodes — immutable by default.
-- Type hints on all public functions; internal closures can omit them when obvious from context.
+- Type hints on all functions.
+- No string keys or bare dicts to pass structured information between functions — use typed parameters, dataclasses, or named tuples.
+
+## Formatting and linting
+
+- Run `ruff format` and `ruff check` before committing. All warnings must be resolved.
 
 ## Error handling
 
@@ -27,8 +33,3 @@
 - One logical assertion per test name. `test_two_independent_dice_collapse_to_one` beats `test_simplify_1`.
 - Parametrize over similar cases with `@pytest.mark.parametrize`.
 
-## Architecture
-
-- Two-pass design: `simplify(expr, domains)` → `build_pmf(expr, domains)`. Keep passes separate and composable.
-- `build_pmf` is a pure enumeration primitive — no optimisation logic inside it.
-- `simplify` is called explicitly in `cli.py`; tests that want the optimised path call both.
