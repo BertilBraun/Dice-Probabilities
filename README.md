@@ -152,7 +152,7 @@ graph TD
 
 ```mermaid
 graph TD
-    v1["Var _v1  (collapsed PMF — 3 variables → 1)"]
+    v1["Var (collapsed PMF)"]
     style v1 fill:#90ee90
 ```
 
@@ -182,7 +182,7 @@ graph TD
 graph TD
     IfElse --> cond["Compare (&gt;)"]
     IfElse --> then_var["Var _d0  (X)"]
-    IfElse --> v0["Var _v0  (PMF of d6+d8)"]
+    IfElse --> v0["Var (PMF of d6+d8)"]
     cond --> d0_cond["Var _d0  (X)"]
     cond --> c3["Const 3"]
 
@@ -191,7 +191,7 @@ graph TD
     style v0 fill:#90ee90
 ```
 
-Two variables remain: `_d0` (X's d6) and `_v0` (the pre-computed PMF of d6+d8). `build_pmf` enumerates only their 6 × 19 = 114 combinations instead of 6 × 6 × 8 = 288.
+Two variables remain: `_d0` (X's d6) and the pre-computed PMF of d6+d8. `build_pmf` enumerates only their 6 × 19 = 114 combinations instead of 6 × 6 × 8 = 288.
 
 ### How build_pmf works
 
