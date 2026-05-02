@@ -10,8 +10,6 @@
 ## Python specifics
 
 - No abbreviations — always use full descriptive names for variables and functions.
-- Use `nonlocal name` for mutable closure state — never the `name = [0]` list trick.
-- Avoid single-character variable names that are visually ambiguous (`l`, `O`, `I`).
 - Prefer `match`/`case` over `isinstance` chains for AST node dispatch.
 - Frozen dataclasses for AST nodes — immutable by default.
 - Type hints on all functions.
