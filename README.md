@@ -1,17 +1,13 @@
 # Dice Probabilities
 
-When you roll two dice and the result of one die affects what the other die contributes, standard probability tables break down. This tool handles those cases exactly.
-
-The core idea: bind dice rolls to named variables via functions, then write expressions over those variables. The engine enumerates every combination of outcomes, evaluates the expression for each, and accumulates exact probabilities.
-
-For example:
+When one die affects what another contributes, standard probability tables break down. This tool handles those cases exactly — write any expression over named dice rolls, and get back the full distribution. No sampling, no approximation.
 
 ```text
 f(X, Y): X + Y > 6 -> 2*X | X - Y
 f(d6, d6)
 ```
 
-This asks: roll two d6s — if their sum exceeds 6, score double the first die; otherwise score the difference. The answer isn't a single number but a full distribution, because X and Y appear in both the condition and the result branches.
+Roll two d6s — if their sum exceeds 6, score double the first die; otherwise the difference:
 
 ```text
 -4: 0.56%    -3: 1.39%    -2: 2.50%    ...
@@ -33,6 +29,7 @@ Here `attack(d6)` expands to `(arg + d6_1) + (arg + d6_2)` — the argument die 
 
 ```bash
 pip install -e .
+pip install -e ".[plot]"   # also install matplotlib for --render mat
 ```
 
 Requires Python 3.10+.
@@ -51,7 +48,9 @@ attack(X): bonus(X) + bonus(X)
 attack(d6)"
 ```
 
-**Output format** — one line per outcome sorted ascending, then the expected value:
+### Output modes
+
+**Default** — one line per outcome sorted ascending, then the expected value:
 
 ```text
 0: 50.00%
@@ -60,6 +59,35 @@ attack(d6)"
 6: 16.67%
 (E): 2.5
 ```
+
+**`--render ascii`** — horizontal bar chart scaled to the modal outcome:
+
+```text
+python -m dice "d6 + d6" --render ascii
+```
+
+```text
+ 2 |█████                           2.78%
+ 3 |██████████                      5.56%
+ 4 |███████████████                 8.33%
+ 5 |████████████████████           11.11%
+ 6 |█████████████████████████      13.89%
+ 7 |██████████████████████████████ 16.67%
+ 8 |█████████████████████████      13.89%
+ 9 |████████████████████           11.11%
+10 |███████████████                 8.33%
+11 |██████████                      5.56%
+12 |█████                           2.78%
+(E): 7
+```
+
+**`--render mat`** — matplotlib bar chart (requires `pip install -e ".[plot]"`):
+
+```bash
+python -m dice "d6 + d6" --render mat
+```
+
+![Matplotlib bar chart of d6+d6 distribution, showing outcomes 2–12 with a peak at 7 and expected value 7](documentation/mat_example.png)
 
 ---
 
@@ -192,20 +220,18 @@ X > 3 -> (Y > 3 -> X*Y | X) | Y
 
 The evaluator is built as a pipeline:
 
-```
-text
-  ↓  parse()
-     split into statements
-     build function registry
-     expand Call nodes (macro substitution)
-     extract Die nodes → named variables
-(Expr AST, var_domains)
-  ↓  simplify()
-     annotate every node with its variable set
-     collapse independent subtrees into virtual variables
-(simplified Expr, reduced var_domains)
-  ↓  build_pmf()
-dict[int, float]   ← PMF
+```mermaid
+flowchart TD
+    input([text input])
+    input --> parse
+    parse -->|"split statements, expand macros,\nextract die variables"| ast
+    ast([Expr AST + var domains])
+    ast --> simplify
+    simplify -->|"collapse independent subtrees\ninto virtual variables"| reduced
+    reduced([simplified Expr + reduced domains])
+    reduced --> build_pmf
+    build_pmf -->|"Cartesian product\nover remaining variables"| pmf
+    pmf(["dict[int, float]  —  PMF"])
 ```
 
 ### How function expansion works
@@ -247,21 +273,83 @@ This guarantees that `double(X): X + X; double(d6)` produces `{2,4,6,8,10,12}` e
 
 **PMF combination per operator:**
 
-| Node | Combination |
-| --- | --- |
-| `Add` | pairwise `a + b` over joint distribution |
-| `Sub` | pairwise `a - b` |
-| `Mul` | pairwise `a * b` |
-| `Compare` | pairwise `int(op(a, b))` |
-| `And` | `P(A != 0) * P(B != 0)` |
-| `Or` | `1 - P(A == 0) * P(B == 0)` |
-| `IfElse` | `p_true * PMF(then) + (1 - p_true) * PMF(else)` |
+| Node      | Combination                                     |
+| --------- | ----------------------------------------------- |
+| `Add`     | pairwise `a + b` over joint distribution        |
+| `Sub`     | pairwise `a - b`                                |
+| `Mul`     | pairwise `a * b`                                |
+| `Compare` | pairwise `int(op(a, b))`                        |
+| `And`     | `P(A != 0) * P(B != 0)`                         |
+| `Or`      | `1 - P(A == 0) * P(B == 0)`                     |
+| `IfElse`  | `p_true * PMF(then) + (1 - p_true) * PMF(else)` |
 
 The pairwise combination (used for arithmetic and comparisons) is a double loop over outcomes — `O(|A| × |B|)` — not Cartesian enumeration. For `n` independent dice this is `O(n · k²)` total, versus `O(kⁿ)` for full enumeration.
 
 **`IfElse` nodes.** The collapse condition is slightly different: the condition subtree must be independent of *both* branches (`cond_vars ∩ (then_vars ∪ else_vars) = ∅`). When true, the condition's PMF is computed, `p_true = Σ P(condition≠0)` is extracted, and the result PMF is `p_true · PMF(then) + (1−p_true) · PMF(else)`. This is the case that makes `d6 > 5 -> 50d20 | 0` fast: the d6 and all 50 d20s are independent, so the entire expression collapses to a single virtual variable.
 
 **Result.** After simplification, `build_pmf` sees only the variables that are genuinely entangled with each other. For most game-table expressions this is zero or one variable remaining.
+
+#### Example: full collapse — `d6 > 5 -> d4 + d8 | 0`
+
+The condition die and all branch dice are fully independent. The entire expression collapses to a single virtual variable.
+
+**Before `simplify`:**
+
+```mermaid
+graph TD
+    IfElse --> cond["Compare (&gt;)"]
+    IfElse --> then_add[Add]
+    IfElse --> else_zero["Const 0"]
+    cond --> d0["Var _d0  (d6)"]
+    cond --> c5["Const 5"]
+    then_add --> d1["Var _d1  (d4)"]
+    then_add --> d2["Var _d2  (d8)"]
+```
+
+**After `simplify`:**
+
+```mermaid
+graph TD
+    v1["Var _v1  (collapsed PMF — 3 variables → 1)"]
+    style v1 fill:#90ee90
+```
+
+#### Example: partial collapse — `f(X): X > 3 -> X | d6 + d8;  f(d6)`
+
+`X` appears in both the condition and the then-branch, so the `IfElse` node cannot be collapsed. The else-branch dice `d6 + d8` are independent of everything else and collapse on their own.
+
+**Before `simplify`:**
+
+```mermaid
+graph TD
+    IfElse --> cond["Compare (&gt;)"]
+    IfElse --> then_var["Var _d0  (X)"]
+    IfElse --> else_add[Add]
+    cond --> d0_cond["Var _d0  (X, d6)"]
+    cond --> c3["Const 3"]
+    else_add --> d1["Var _d1  (d6)"]
+    else_add --> d2["Var _d2  (d8)"]
+
+    style then_var fill:#ffd700
+    style d0_cond fill:#ffd700
+```
+
+**After `simplify`:**
+
+```mermaid
+graph TD
+    IfElse --> cond["Compare (&gt;)"]
+    IfElse --> then_var["Var _d0  (X)"]
+    IfElse --> v0["Var _v0  (PMF of d6+d8)"]
+    cond --> d0_cond["Var _d0  (X, d6)"]
+    cond --> c3["Const 3"]
+
+    style then_var fill:#ffd700
+    style d0_cond fill:#ffd700
+    style v0 fill:#90ee90
+```
+
+Two variables remain: `_d0` (X's d6) and `_v0` (the pre-computed PMF of d6+d8). `build_pmf` enumerates only their 6 × 19 = 114 combinations instead of 6 × 6 × 8 = 288.
 
 ### How build_pmf works
 
