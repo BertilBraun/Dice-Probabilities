@@ -2,6 +2,7 @@ from __future__ import annotations
 import sys
 from dice.parser import parse
 from dice.engine import build_pmf
+from dice.simplify import simplify
 
 
 def format_pmf(pmf: dict[int, float], ev: float) -> str:
@@ -21,6 +22,7 @@ def main(argv: list[str] | None = None) -> None:
     except (SyntaxError, ValueError) as exc:
         print(f"Parse error: {exc}", file=sys.stderr)
         sys.exit(1)
+    expr, domains = simplify(expr, domains)
     pmf = build_pmf(expr, domains)
     ev = sum(k * p for k, p in pmf.items())
     print(format_pmf(pmf, ev))

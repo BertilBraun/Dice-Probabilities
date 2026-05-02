@@ -200,6 +200,10 @@ text
      expand Call nodes (macro substitution)
      extract Die nodes → named variables
 (Expr AST, var_domains)
+  ↓  simplify()
+     annotate every node with its variable set
+     collapse independent subtrees into virtual variables
+(simplified Expr, reduced var_domains)
   ↓  build_pmf()
 dict[int, float]   ← PMF
 ```
@@ -222,6 +226,7 @@ This guarantees that `double(X): X + X; double(d6)` produces `{2,4,6,8,10,12}` e
 | `ast_nodes.py` | Frozen dataclass AST nodes for all expression types                                     |
 | `evaluator.py` | `eval_expr(expr, env)` — pure evaluation given a concrete variable assignment           |
 | `engine.py`    | `build_pmf(expr, domains)` — joint enumeration over all variable assignments            |
+| `simplify.py`  | `simplify(expr, domains)` — AST simplification pass; collapses independent subtrees     |
 | `parser.py`    | Recursive-descent parser, macro expansion, die extraction; `parse()` and `parse_expr()` |
 | `cli.py`       | Command-line interface                                                                  |
 
