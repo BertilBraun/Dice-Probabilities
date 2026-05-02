@@ -15,15 +15,7 @@ Roll two d6s — if their sum exceeds 6, score double the first die; otherwise t
 (E): 3.78
 ```
 
-Functions compose, and each call is independent:
-
-```text
-bonus(X): X + d6
-attack(X): bonus(X) + bonus(X)
-attack(d6)
-```
-
-Here `attack(d6)` expands to `(arg + d6_1) + (arg + d6_2)` — the argument die is rolled once and shared, while the `d6` inside `bonus` is a fresh independent roll on each call. Every possible combination of rolls is considered; the result is always exact, never sampled.
+Every possible combination of rolls is considered; the result is always exact, never sampled.
 
 ## Output modes
 
@@ -112,8 +104,6 @@ This guarantees that `double(X): X + X; double(d6)` produces `{2,4,6,8,10,12}` e
 
 `simplify` walks the AST bottom-up, threading a `forbidden` variable set top-down. It collapses any subtree whose variables are entirely disjoint from both its sibling's variables and the `forbidden` context. Collapsed subtrees are replaced by a single virtual variable (`_v0`, `_v1`, …) whose domain is the pre-computed PMF.
 
-**Pre-annotation.** Before any collapsing, `simplify` annotates every node with its original variable set (keyed by `id(node)`). This snapshot is needed because after a child is replaced by a virtual `Var`, its identity changes — without the snapshot, the disjointness check would use stale or wrong variable sets.
-
 **The `forbidden` context.** Each recursive call carries the union of variable sets of all sibling subtrees at every ancestor level. This prevents a subtle bug: in `(X+Y) + (X+Z)`, the left child `X+Y` has disjoint internal variables and looks self-contained locally, but `X` is also in the right sibling — collapsing `X+Y` into a virtual variable would discard X's correlation with `X+Z`. The forbidden context catches this by including `vars(right)` when descending into `left`, and vice-versa.
 
 **Binary nodes.** For `BinOp(left, right)`:
@@ -177,7 +167,7 @@ graph TD
     IfElse --> cond["Compare (&gt;)"]
     IfElse --> then_var["Var _d0  (X)"]
     IfElse --> else_add[Add]
-    cond --> d0_cond["Var _d0  (X, d6)"]
+    cond --> d0_cond["Var _d0  (X)"]
     cond --> c3["Const 3"]
     else_add --> d1["Var _d1  (d6)"]
     else_add --> d2["Var _d2  (d8)"]
@@ -193,7 +183,7 @@ graph TD
     IfElse --> cond["Compare (&gt;)"]
     IfElse --> then_var["Var _d0  (X)"]
     IfElse --> v0["Var _v0  (PMF of d6+d8)"]
-    cond --> d0_cond["Var _d0  (X, d6)"]
+    cond --> d0_cond["Var _d0  (X)"]
     cond --> c3["Const 3"]
 
     style then_var fill:#ffd700
@@ -387,4 +377,4 @@ X > 3 -> (Y > 3 -> X*Y | X) | Y
 pytest tests/ -v
 ```
 
-352 tests covering: AST nodes, evaluator, engine (PMF axioms, known expected values, symmetry), parser (precedence, all operators, error cases), functions (binding semantics, independence, composition, error cases), integration (full pipeline, property checks, CLI output), and extreme multi-variable cases.
+418 tests covering: AST nodes, evaluator, engine (PMF axioms, known expected values, symmetry), parser (precedence, all operators, error cases), functions (binding semantics, independence, composition, error cases), scalability stress tests, AST simplification, integration (full pipeline, property checks, CLI output), and extreme multi-variable cases.
