@@ -12,7 +12,7 @@ Roll two d6s — if their sum exceeds 6, score double the first die; otherwise t
 ```text
 -4: 0.56%    -3: 1.39%    -2: 2.50%    ...
  8: 2.78%    10: 5.56%    12: 2.78%
-(E): 3.78
+Expected Value: 3.78
 ```
 
 Every possible combination of rolls is considered; the result is always exact, never sampled.
@@ -26,7 +26,7 @@ Every possible combination of rolls is considered; the result is always exact, n
 4: 16.67%
 5: 16.67%
 6: 16.67%
-(E): 2.5
+Expected Value: 2.5
 ```
 
 **`--render ascii`** — horizontal bar chart scaled to the modal outcome:
@@ -47,7 +47,6 @@ python -m dice "d6 + d6" --render ascii
 10 |███████████████                 8.33%
 11 |██████████                      5.56%
 12 |█████                           2.78%
-(E): 7
 ```
 
 **`--render mat`** — matplotlib bar chart (requires `pip install -e ".[plot]"`):
@@ -82,8 +81,8 @@ flowchart TD
 
 Function calls are resolved at parse time by macro substitution — the engine never sees them. When `f(d6)` is called:
 
-1. The `d6` argument is extracted to a fresh variable (e.g. `_d0`) **before** substitution, so every occurrence of the parameter in the body refers to the same roll.
-2. The body is substituted with `param → _d0`.
+1. The `d6` argument is extracted to a fresh variable **before** substitution, so every occurrence of the parameter in the body refers to the same roll.
+2. The body is substituted with `param → var`.
 3. Any `dN` tokens inside the body become fresh variables at this point.
 4. The result is expanded recursively for nested calls.
 
@@ -142,10 +141,10 @@ graph TD
     IfElse --> cond["Compare (&gt;)"]
     IfElse --> then_add[Add]
     IfElse --> else_zero["Const 0"]
-    cond --> d0["Var _d0  (d6)"]
+    cond --> d0["Var (d6)"]
     cond --> c5["Const 5"]
-    then_add --> d1["Var _d1  (d4)"]
-    then_add --> d2["Var _d2  (d8)"]
+    then_add --> d1["Var (d4)"]
+    then_add --> d2["Var (d8)"]
 ```
 
 **After `simplify`:**
@@ -165,12 +164,12 @@ graph TD
 ```mermaid
 graph TD
     IfElse --> cond["Compare (&gt;)"]
-    IfElse --> then_var["Var _d0  (X)"]
+    IfElse --> then_var["Var (X)"]
     IfElse --> else_add[Add]
-    cond --> d0_cond["Var _d0  (X)"]
+    cond --> d0_cond["Var (X)"]
     cond --> c3["Const 3"]
-    else_add --> d1["Var _d1  (d6)"]
-    else_add --> d2["Var _d2  (d8)"]
+    else_add --> d1["Var (d6)"]
+    else_add --> d2["Var (d8)"]
 
     style then_var fill:#ffd700
     style d0_cond fill:#ffd700
@@ -181,9 +180,9 @@ graph TD
 ```mermaid
 graph TD
     IfElse --> cond["Compare (&gt;)"]
-    IfElse --> then_var["Var _d0  (X)"]
+    IfElse --> then_var["Var (X)"]
     IfElse --> v0["Var (PMF of d6+d8)"]
-    cond --> d0_cond["Var _d0  (X)"]
+    cond --> d0_cond["Var (X)"]
     cond --> c3["Const 3"]
 
     style then_var fill:#ffd700
@@ -191,7 +190,7 @@ graph TD
     style v0 fill:#90ee90
 ```
 
-Two variables remain: `_d0` (X's d6) and the pre-computed PMF of d6+d8. `build_pmf` enumerates only their 6 × 19 = 114 combinations instead of 6 × 6 × 8 = 288.
+Two variables remain: `X` (d6) and the pre-computed PMF of d6+d8. `build_pmf` enumerates only their 6 × 19 = 114 combinations instead of 6 × 6 × 8 = 288.
 
 ### How build_pmf works
 
@@ -365,9 +364,7 @@ X > 3 -> (Y > 3 -> X*Y | X) | Y
 
 - Functions must be defined before use (top-to-bottom only)
 - No recursion (detected and rejected at parse time)
-- Exponential blow-up in the number of dice: `build_pmf` enumerates the full Cartesian product of all die variables, so complexity is `O(kⁿ)` where `n` is the number of distinct dice after expansion. An expression like `d6 > 5 -> 50d20 | 0` is intractable even though the result is conceptually simple.
-
-  The correct fix is to preserve exact results — an alternative that computes distributions symbolically (propagating PMFs rather than concrete values through the AST) would handle independent subexpressions via convolution, reducing `n`-dice addition to `O(n · k²)` instead of `O(kⁿ)`. The challenge is that variables shared across a conditional's condition and branches require joint enumeration to remain correct; a dependency analysis pass over the AST would identify which subgraphs are truly independent and apply convolution only there, falling back to enumeration where variables are shared. Without that analysis, the symbolic approach silently produces wrong results for shared-variable expressions — trading correctness for feasibility.
+- Exponential blow-up in the number of interdependent dice: `build_pmf` enumerates the full Cartesian product of all die variables that could not be simplified, so complexity is `O(kⁿ)` where `n` is the number of distinct dice after expansion.
 
 ---
 
