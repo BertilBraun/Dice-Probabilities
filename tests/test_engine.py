@@ -115,7 +115,7 @@ class TestScalarTransform:
 class TestConditionalThreshold:
     @pytest.fixture(autouse=True)
     def compute(self):
-        cond = Compare(Var("X"), ">", Const(3))
+        cond = Compare(Var("X"), Const(3), ">")
         self.pmf = build_pmf(IfElse(cond, Var("X"), Const(0)), {"X": D6})
 
     def test_keys_are_correct(self):
@@ -138,7 +138,7 @@ class TestConditionalThreshold:
 class TestTwoVarConditional:
     @pytest.fixture(autouse=True)
     def compute(self):
-        cond  = Compare(Add(Var("X"), Var("Y")), ">", Const(6))
+        cond  = Compare(Add(Var("X"), Var("Y")), Const(6), ">")
         then_ = Add(Mul(Var("X"), Const(2)), Var("Y"))
         else_ = Add(Var("X"), Mul(Const(2), Var("Y")))
         self.pmf = build_pmf(IfElse(cond, then_, else_), {"X": D6, "Y": D6})

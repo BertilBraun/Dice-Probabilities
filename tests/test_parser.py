@@ -81,7 +81,7 @@ class TestParseExprIfElse:
     def test_simple_ifelse(self):
         node = parse_expr("X > 3 -> X | 0")
         assert isinstance(node, IfElse)
-        assert node.condition == Compare(Var("X"), ">", Const(3))
+        assert node.condition == Compare(Var("X"), Const(3), ">")
         assert node.then_branch == Var("X")
         assert node.else_branch == Const(0)
 
@@ -93,14 +93,14 @@ class TestParseExprIfElse:
     def test_complex_two_var_ifelse(self):
         node = parse_expr("X + Y > 6 -> X*2 + Y | X + 2*Y")
         assert isinstance(node, IfElse)
-        assert node.condition == Compare(Add(Var("X"), Var("Y")), ">", Const(6))
+        assert node.condition == Compare(Add(Var("X"), Var("Y")), Const(6), ">")
         assert node.then_branch == Add(Mul(Var("X"), Const(2)), Var("Y"))
         assert node.else_branch == Add(Var("X"), Mul(Const(2), Var("Y")))
 
     def test_arrow_does_not_conflict_with_subtraction(self):
         node = parse_expr("X - 1 > 0 -> X | 0")
         assert isinstance(node, IfElse)
-        assert node.condition == Compare(Sub(Var("X"), Const(1)), ">", Const(0))
+        assert node.condition == Compare(Sub(Var("X"), Const(1)), Const(0), ">")
 
 
 class TestParseFullExpression:
@@ -168,16 +168,16 @@ class TestParseAnd:
     def test_simple_and(self):
         node = parse_expr("X > 2 && Y > 3")
         assert node == And(
-            Compare(Var("X"), ">", Const(2)),
-            Compare(Var("Y"), ">", Const(3)),
+            Compare(Var("X"), Const(2), ">"),
+            Compare(Var("Y"), Const(3), ">"),
         )
 
     def test_and_left_associative(self):
         node = parse_expr("X > 0 && Y > 0 && Z > 0")
         expected = And(
-            And(Compare(Var("X"), ">", Const(0)),
-                Compare(Var("Y"), ">", Const(0))),
-            Compare(Var("Z"), ">", Const(0)),
+            And(Compare(Var("X"), Const(0), ">"),
+                Compare(Var("Y"), Const(0), ">")),
+            Compare(Var("Z"), Const(0), ">"),
         )
         assert node == expected
 
@@ -185,8 +185,8 @@ class TestParseAnd:
         node = parse_expr("X > 2 && Y > 3 -> X + Y | 0")
         assert isinstance(node, IfElse)
         assert node.condition == And(
-            Compare(Var("X"), ">", Const(2)),
-            Compare(Var("Y"), ">", Const(3)),
+            Compare(Var("X"), Const(2), ">"),
+            Compare(Var("Y"), Const(3), ">"),
         )
         assert node.then_branch == Add(Var("X"), Var("Y"))
         assert node.else_branch == Const(0)
@@ -196,16 +196,16 @@ class TestParseOr:
     def test_simple_or(self):
         node = parse_expr("X > 2 || Y > 3")
         assert node == Or(
-            Compare(Var("X"), ">", Const(2)),
-            Compare(Var("Y"), ">", Const(3)),
+            Compare(Var("X"), Const(2), ">"),
+            Compare(Var("Y"), Const(3), ">"),
         )
 
     def test_or_left_associative(self):
         node = parse_expr("X > 0 || Y > 0 || Z > 0")
         expected = Or(
-            Or(Compare(Var("X"), ">", Const(0)),
-               Compare(Var("Y"), ">", Const(0))),
-            Compare(Var("Z"), ">", Const(0)),
+            Or(Compare(Var("X"), Const(0), ">"),
+               Compare(Var("Y"), Const(0), ">")),
+            Compare(Var("Z"), Const(0), ">"),
         )
         assert node == expected
 
@@ -213,8 +213,8 @@ class TestParseOr:
         node = parse_expr("X > 4 || Y > 4 -> X + Y | 0")
         assert isinstance(node, IfElse)
         assert node.condition == Or(
-            Compare(Var("X"), ">", Const(4)),
-            Compare(Var("Y"), ">", Const(4)),
+            Compare(Var("X"), Const(4), ">"),
+            Compare(Var("Y"), Const(4), ">"),
         )
 
 
@@ -223,24 +223,24 @@ class TestBooleanPrecedence:
         # A || B && C  →  A || (B && C)
         node = parse_expr("X > 0 || Y > 0 && Z > 0")
         assert isinstance(node, Or)
-        assert node.left == Compare(Var("X"), ">", Const(0))
+        assert node.left == Compare(Var("X"), Const(0), ">")
         assert node.right == And(
-            Compare(Var("Y"), ">", Const(0)),
-            Compare(Var("Z"), ">", Const(0)),
+            Compare(Var("Y"), Const(0), ">"),
+            Compare(Var("Z"), Const(0), ">"),
         )
 
     def test_compare_binds_tighter_than_and(self):
         node = parse_expr("X + 1 > 2 && Y < 5")
         assert isinstance(node, And)
-        assert node.left == Compare(Add(Var("X"), Const(1)), ">", Const(2))
-        assert node.right == Compare(Var("Y"), "<", Const(5))
+        assert node.left == Compare(Add(Var("X"), Const(1)), Const(2), ">")
+        assert node.right == Compare(Var("Y"), Const(5), "<")
 
     def test_pipe_in_ifelse_not_confused_with_or(self):
         node = parse_expr("X > 0 -> Y > 0 || Z > 0 | 0")
         assert isinstance(node, IfElse)
         assert node.then_branch == Or(
-            Compare(Var("Y"), ">", Const(0)),
-            Compare(Var("Z"), ">", Const(0)),
+            Compare(Var("Y"), Const(0), ">"),
+            Compare(Var("Z"), Const(0), ">"),
         )
         assert node.else_branch == Const(0)
 
@@ -263,12 +263,12 @@ class TestParseInlineDiceRaw:
 
     def test_die_in_condition(self):
         node = parse_expr("d6 > 3")
-        assert node == Compare(Die(6), ">", Const(3))
+        assert node == Compare(Die(6), Const(3), ">")
 
     def test_die_in_ifelse(self):
         node = parse_expr("d6 > 3 -> d6 | 0")
         assert isinstance(node, IfElse)
-        assert node.condition == Compare(Die(6), ">", Const(3))
+        assert node.condition == Compare(Die(6), Const(3), ">")
         assert node.then_branch == Die(6)
         assert node.else_branch == Const(0)
 

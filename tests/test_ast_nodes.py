@@ -61,18 +61,18 @@ class TestSub:
 class TestCompare:
     @pytest.mark.parametrize("op", list(VALID_OPS))
     def test_valid_ops(self, op):
-        node = Compare(Var("X"), op, Const(3))
+        node = Compare(Var("X"), Const(3), op)
         assert node.op == op
 
     def test_stores_children(self):
-        node = Compare(Var("X"), ">", Const(3))
+        node = Compare(Var("X"), Const(3), ">")
         assert node.left == Var("X")
         assert node.right == Const(3)
 
 
 class TestIfElse:
     def test_stores_all_branches(self):
-        cond = Compare(Var("X"), ">", Const(3))
+        cond = Compare(Var("X"), Const(3), ">")
         node = IfElse(cond, Var("X"), Const(0))
         assert node.condition == cond
         assert node.then_branch == Var("X")

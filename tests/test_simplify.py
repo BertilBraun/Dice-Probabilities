@@ -57,10 +57,10 @@ class TestVarsOf:
         assert vars_of(Mul(Var('a'), Var('b'))) == frozenset({'a', 'b'})
 
     def test_compare_with_const(self):
-        assert vars_of(Compare(Var('x'), '>', Const(3))) == frozenset({'x'})
+        assert vars_of(Compare(Var('x'), Const(3), '>')) == frozenset({'x'})
 
     def test_compare_two_vars(self):
-        assert vars_of(Compare(Var('x'), '<', Var('y'))) == frozenset({'x', 'y'})
+        assert vars_of(Compare(Var('x'), Var('y'), '<')) == frozenset({'x', 'y'})
 
     def test_and(self):
         assert vars_of(And(Var('a'), Var('b'))) == frozenset({'a', 'b'})
@@ -73,12 +73,12 @@ class TestVarsOf:
         assert vars_of(node) == frozenset({'c', 't', 'e'})
 
     def test_ifelse_shared_condition_and_branch(self):
-        node = IfElse(Compare(Var('x'), '>', Const(3)), Var('x'), Const(0))
+        node = IfElse(Compare(Var('x'), Const(3), '>'), Var('x'), Const(0))
         assert vars_of(node) == frozenset({'x'})
 
     def test_nested(self):
         # (x + y) > (z - 1)
-        node = Compare(Add(Var('x'), Var('y')), '>', Sub(Var('z'), Const(1)))
+        node = Compare(Add(Var('x'), Var('y')), Sub(Var('z'), Const(1)), '>')
         assert vars_of(node) == frozenset({'x', 'y', 'z'})
 
     def test_deeply_nested(self):

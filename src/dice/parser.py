@@ -3,7 +3,7 @@ import re
 from enum import auto, Enum
 from typing import NamedTuple
 from dice.ast_nodes import (
-    Expr, Const, Var, Die, Add, Sub, Mul, Compare, IfElse, And, Or, Call, VALID_OPS
+    Add, BinaryNode, Call, Compare, Const, Die, Expr, IfElse, Mul, Or, And, Sub, Var, VALID_OPS
 )
 from dice.engine import die_domain, Domain
 
@@ -131,7 +131,7 @@ class _Parser:
         if token.kind == TokenKind.OP and token.value in VALID_OPS:
             self._consume()
             right = self._parse_add()
-            return Compare(left, token.value, right)
+            return Compare(left, right, token.value)
         return left
 
     def _parse_add(self) -> Expr:
@@ -269,24 +269,14 @@ def _substitute(expr: Expr, substitution: dict[str, Expr]) -> Expr:
             return substitution.get(name, expr)
         case Call(name=name, args=args):
             return Call(name, tuple(_substitute(arg, substitution) for arg in args))
-        case Add(left=left, right=right):
-            return Add(_substitute(left, substitution), _substitute(right, substitution))
-        case Sub(left=left, right=right):
-            return Sub(_substitute(left, substitution), _substitute(right, substitution))
-        case Mul(left=left, right=right):
-            return Mul(_substitute(left, substitution), _substitute(right, substitution))
-        case Compare(left=left, op=operator, right=right):
-            return Compare(_substitute(left, substitution), operator, _substitute(right, substitution))
+        case BinaryNode(left=left, right=right):
+            return expr.with_children(_substitute(left, substitution), _substitute(right, substitution))
         case IfElse(condition=condition, then_branch=then_branch, else_branch=else_branch):
             return IfElse(
                 _substitute(condition, substitution),
                 _substitute(then_branch, substitution),
                 _substitute(else_branch, substitution),
             )
-        case And(left=left, right=right):
-            return And(_substitute(left, substitution), _substitute(right, substitution))
-        case Or(left=left, right=right):
-            return Or(_substitute(left, substitution), _substitute(right, substitution))
         case _:  # Const, Die — no variables
             return expr
 
@@ -325,25 +315,9 @@ def _expand(
             substitution = dict(zip(param_names, clean_args))
             substituted_body = _substitute(body, substitution)
             return _expand(substituted_body, registry, die_counter, domains, call_stack | {name})
-        case Add(left=left, right=right):
-            return Add(
+        case BinaryNode(left=left, right=right):
+            return expr.with_children(
                 _expand(left, registry, die_counter, domains, call_stack),
-                _expand(right, registry, die_counter, domains, call_stack),
-            )
-        case Sub(left=left, right=right):
-            return Sub(
-                _expand(left, registry, die_counter, domains, call_stack),
-                _expand(right, registry, die_counter, domains, call_stack),
-            )
-        case Mul(left=left, right=right):
-            return Mul(
-                _expand(left, registry, die_counter, domains, call_stack),
-                _expand(right, registry, die_counter, domains, call_stack),
-            )
-        case Compare(left=left, op=operator, right=right):
-            return Compare(
-                _expand(left, registry, die_counter, domains, call_stack),
-                operator,
                 _expand(right, registry, die_counter, domains, call_stack),
             )
         case IfElse(condition=condition, then_branch=then_branch, else_branch=else_branch):
@@ -351,16 +325,6 @@ def _expand(
                 _expand(condition, registry, die_counter, domains, call_stack),
                 _expand(then_branch, registry, die_counter, domains, call_stack),
                 _expand(else_branch, registry, die_counter, domains, call_stack),
-            )
-        case And(left=left, right=right):
-            return And(
-                _expand(left, registry, die_counter, domains, call_stack),
-                _expand(right, registry, die_counter, domains, call_stack),
-            )
-        case Or(left=left, right=right):
-            return Or(
-                _expand(left, registry, die_counter, domains, call_stack),
-                _expand(right, registry, die_counter, domains, call_stack),
             )
         case _:  # Const, Var, Die — leaves, nothing to expand
             return expr
@@ -381,18 +345,11 @@ def _extract_dice(
             return Var(var_name)
         case Call():
             raise TypeError("Unexpanded Call node in _extract_dice; expand before extracting dice")
-        case Add(left=left, right=right):
-            return Add(_extract_dice(left, die_counter, domains), _extract_dice(right, die_counter, domains))
-        case Sub(left=left, right=right):
-            return Sub(_extract_dice(left, die_counter, domains), _extract_dice(right, die_counter, domains))
-        case Mul(left=left, right=right):
-            return Mul(_extract_dice(left, die_counter, domains), _extract_dice(right, die_counter, domains))
-        case Compare(left=left, op=operator, right=right):
-            return Compare(_extract_dice(left, die_counter, domains), operator, _extract_dice(right, die_counter, domains))
-        case And(left=left, right=right):
-            return And(_extract_dice(left, die_counter, domains), _extract_dice(right, die_counter, domains))
-        case Or(left=left, right=right):
-            return Or(_extract_dice(left, die_counter, domains), _extract_dice(right, die_counter, domains))
+        case BinaryNode(left=left, right=right):
+            return expr.with_children(
+                _extract_dice(left, die_counter, domains),
+                _extract_dice(right, die_counter, domains),
+            )
         case IfElse(condition=condition, then_branch=then_branch, else_branch=else_branch):
             return IfElse(
                 _extract_dice(condition, die_counter, domains),

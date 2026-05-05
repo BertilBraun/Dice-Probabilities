@@ -1,30 +1,10 @@
 from __future__ import annotations
+
 from collections import defaultdict
-import operator as _op
 from typing import Callable
 
-from dice.ast_nodes import (
-    Expr,
-    Const,
-    Var,
-    Add,
-    Sub,
-    Mul,
-    Compare,
-    IfElse,
-    And,
-    Or,
-)
+from dice.ast_nodes import And, BinaryNode, Const, Expr, IfElse, Or, Var
 from dice.engine import Domain, PMF, build_pmf
-
-_CMP_FNS: dict[str, Callable[[int, int], bool]] = {
-    '<': _op.lt,
-    '>': _op.gt,
-    '<=': _op.le,
-    '>=': _op.ge,
-    '==': _op.eq,
-    '!=': _op.ne,
-}
 
 
 def vars_of(expr: Expr) -> frozenset[str]:
@@ -32,21 +12,14 @@ def vars_of(expr: Expr) -> frozenset[str]:
     match expr:
         case Const():
             return frozenset()
-        case Var(name=n):
-            return frozenset({n})
-        case (
-            Add(left=left, right=right)
-            | Sub(left=left, right=right)
-            | Mul(left=left, right=right)
-            | Compare(left=left, right=right)
-            | And(left=left, right=right)
-            | Or(left=left, right=right)
-        ):
+        case Var(name=name):
+            return frozenset({name})
+        case BinaryNode(left=left, right=right):
             return vars_of(left) | vars_of(right)
-        case IfElse(condition=cond, then_branch=then_, else_branch=else_):
-            return vars_of(cond) | vars_of(then_) | vars_of(else_)
+        case IfElse(condition=condition, then_branch=then_branch, else_branch=else_branch):
+            return vars_of(condition) | vars_of(then_branch) | vars_of(else_branch)
         case _:
-            assert False, f'Unexpected node type: {expr}'
+            assert False, f"Unexpected node type: {expr}"
 
 
 def _pairwise(a: PMF, b: PMF, combine: Callable[[int, int], int]) -> PMF:
@@ -58,31 +31,41 @@ def _pairwise(a: PMF, b: PMF, combine: Callable[[int, int], int]) -> PMF:
     it generalises to an arbitrary output function over the joint distribution.
     """
     result: dict[int, float] = defaultdict(float)
-    for va, pa in a.items():
-        for vb, pb in b.items():
-            result[combine(va, vb)] += pa * pb
+    for value_a, prob_a in a.items():
+        for value_b, prob_b in b.items():
+            result[combine(value_a, value_b)] += prob_a * prob_b
     return dict(result)
 
 
 def _and_pmf(a: PMF, b: PMF) -> PMF:
-    p = sum(p for v, p in a.items() if v) * sum(p for v, p in b.items() if v)
-    return {1: p, 0: 1.0 - p}
+    prob = sum(p for v, p in a.items() if v) * sum(p for v, p in b.items() if v)
+    return {1: prob, 0: 1.0 - prob}
 
 
 def _or_pmf(a: PMF, b: PMF) -> PMF:
-    p = 1.0 - sum(p for v, p in a.items() if not v) * sum(p for v, p in b.items() if not v)
-    return {1: p, 0: 1.0 - p}
+    prob = 1.0 - sum(p for v, p in a.items() if not v) * sum(p for v, p in b.items() if not v)
+    return {1: prob, 0: 1.0 - prob}
 
 
 def _mix(cond_pmf: PMF, then_pmf: PMF, else_pmf: PMF) -> PMF:
     """Weight then_pmf and else_pmf by the probability that cond is truthy."""
-    p_true = sum(p for v, p in cond_pmf.items() if v)
+    prob_true = sum(p for v, p in cond_pmf.items() if v)
     result: dict[int, float] = defaultdict(float)
-    for v, p in then_pmf.items():
-        result[v] += p_true * p
-    for v, p in else_pmf.items():
-        result[v] += (1.0 - p_true) * p
+    for value, prob in then_pmf.items():
+        result[value] += prob_true * prob
+    for value, prob in else_pmf.items():
+        result[value] += (1.0 - prob_true) * prob
     return dict(result)
+
+
+def _combine_pmf(node: BinaryNode, left_pmf: PMF, right_pmf: PMF) -> PMF:
+    match node:
+        case And():
+            return _and_pmf(left_pmf, right_pmf)
+        case Or():
+            return _or_pmf(left_pmf, right_pmf)
+        case _:
+            return _pairwise(left_pmf, right_pmf, node.apply)
 
 
 def simplify(expr: Expr, domains: dict[str, Domain]) -> tuple[Expr, dict[str, Domain]]:
@@ -104,66 +87,62 @@ def simplify(expr: Expr, domains: dict[str, Domain]) -> tuple[Expr, dict[str, Do
     # whose id() is different from the node we started with.
     orig: dict[int, frozenset[str]] = {}
 
-    def _annotate(e: Expr) -> None:
-        if id(e) in orig:
+    def _annotate(node: Expr) -> None:
+        if id(node) in orig:
             return
-        match e:
-            case (
-                Add(left=left, right=right)
-                | Sub(left=left, right=right)
-                | Mul(left=left, right=right)
-                | Compare(left=left, right=right)
-                | And(left=left, right=right)
-                | Or(left=left, right=right)
-            ):
+        match node:
+            case BinaryNode(left=left, right=right):
                 _annotate(left)
                 _annotate(right)
-            case IfElse(condition=c, then_branch=t, else_branch=eb):
-                _annotate(c)
-                _annotate(t)
-                _annotate(eb)
-        orig[id(e)] = vars_of(e)
+            case IfElse(condition=condition, then_branch=then_branch, else_branch=else_branch):
+                _annotate(condition)
+                _annotate(then_branch)
+                _annotate(else_branch)
+        orig[id(node)] = vars_of(node)
 
     _annotate(expr)
 
-    def _pmf_of(e: Expr, var_set: frozenset[str]) -> PMF:
-        match e:
-            case Const(value=v):
-                return {v: 1.0}
-            case Var(name=n):
-                return dict(new_domains[n])
+    def _pmf_of(node: Expr, var_set: frozenset[str]) -> PMF:
+        match node:
+            case Const(value=value):
+                return {value: 1.0}
+            case Var(name=name):
+                return dict(new_domains[name])
             case _:
-                return build_pmf(e, {v: new_domains[v] for v in var_set})
+                return build_pmf(node, {v: new_domains[v] for v in var_set})
 
     def _register(pmf: PMF, consume: frozenset[str]) -> tuple[Var, frozenset[str]]:
         nonlocal counter
         # Remove the consumed variables — they are fully absorbed into the new
         # virtual variable and must not appear in the Cartesian product.
-        for v in consume:
-            new_domains.pop(v, None)
-        name = f'_v{counter}'
+        for variable in consume:
+            new_domains.pop(variable, None)
+        name = f"_v{counter}"
         counter += 1
         new_domains[name] = list(pmf.items())
         return Var(name=name), frozenset({name})
 
     def _try_binary(
-        ov: frozenset[str],
-        left: Expr,
-        right: Expr,
+        node: BinaryNode,
+        original_vars: frozenset[str],
         forbidden: frozenset[str],
-        combine: Callable[[PMF, PMF], PMF],
-        rebuild: Callable[[Expr, Expr], Expr],
     ) -> tuple[Expr, frozenset[str]]:
-        lv, rv = orig[id(left)], orig[id(right)]
-        sl, slv = go(left,  forbidden | rv)
-        sr, srv = go(right, forbidden | lv)
-        if not (lv & rv) and not (ov & forbidden):
+        left, right = node.left, node.right
+        left_vars, right_vars = orig[id(left)], orig[id(right)]
+        simplified_left, simplified_left_vars = go(left, forbidden | right_vars)
+        simplified_right, simplified_right_vars = go(right, forbidden | left_vars)
+        if not (left_vars & right_vars) and not (original_vars & forbidden):
             # Both children are independent and not contested by outer siblings:
             # combine their PMFs directly, replacing both with one virtual variable.
-            return _register(combine(_pmf_of(sl, slv), _pmf_of(sr, srv)), slv | srv)
-        return rebuild(sl, sr), slv | srv
+            combined = _combine_pmf(
+                node,
+                _pmf_of(simplified_left, simplified_left_vars),
+                _pmf_of(simplified_right, simplified_right_vars),
+            )
+            return _register(combined, simplified_left_vars | simplified_right_vars)
+        return node.with_children(simplified_left, simplified_right), simplified_left_vars | simplified_right_vars
 
-    def go(e: Expr, forbidden: frozenset[str]) -> tuple[Expr, frozenset[str]]:
+    def go(node: Expr, forbidden: frozenset[str]) -> tuple[Expr, frozenset[str]]:
         """
         Bottom-up simplification pass.
 
@@ -173,59 +152,40 @@ def simplify(expr: Expr, domains: dict[str, Domain]) -> tuple[Expr, dict[str, Do
         expression, so computing the subtree's PMF in isolation would discard
         their correlation with the rest and produce wrong results.
         """
-        ov = orig[id(e)]
+        original_vars = orig[id(node)]
 
-        match e:
+        match node:
             case Const() | Var():
-                return e, ov
+                return node, original_vars
 
-            case Add(left=left, right=right):
-                return _try_binary(ov, left, right, forbidden,
-                    combine=lambda a, b: _pairwise(a, b, _op.add),
-                    rebuild=Add)
+            case BinaryNode():
+                return _try_binary(node, original_vars, forbidden)
 
-            case Sub(left=left, right=right):
-                return _try_binary(ov, left, right, forbidden,
-                    combine=lambda a, b: _pairwise(a, b, _op.sub),
-                    rebuild=Sub)
-
-            case Mul(left=left, right=right):
-                return _try_binary(ov, left, right, forbidden,
-                    combine=lambda a, b: _pairwise(a, b, _op.mul),
-                    rebuild=Mul)
-
-            case Compare(left=left, op=op, right=right):
-                fn = _CMP_FNS[op]
-                return _try_binary(ov, left, right, forbidden,
-                    combine=lambda a, b: _pairwise(a, b, lambda x, y: int(fn(x, y))),
-                    rebuild=lambda sl, sr: Compare(sl, op, sr))
-
-            case And(left=left, right=right):
-                return _try_binary(ov, left, right, forbidden,
-                    combine=_and_pmf,
-                    rebuild=And)
-
-            case Or(left=left, right=right):
-                return _try_binary(ov, left, right, forbidden,
-                    combine=_or_pmf,
-                    rebuild=Or)
-
-            case IfElse(condition=cond, then_branch=then_, else_branch=else_):
-                cv, tv, ev = orig[id(cond)], orig[id(then_)], orig[id(else_)]
-                sc, scv = go(cond,  forbidden | tv | ev)
-                st, stv = go(then_, forbidden | cv | ev)
-                se, sev = go(else_, forbidden | cv | tv)
-                if not (cv & (tv | ev)) and not (ov & forbidden):
+            case IfElse(condition=condition, then_branch=then_branch, else_branch=else_branch):
+                cond_vars = orig[id(condition)]
+                then_vars = orig[id(then_branch)]
+                else_vars = orig[id(else_branch)]
+                simplified_cond, simplified_cond_vars = go(condition, forbidden | then_vars | else_vars)
+                simplified_then, simplified_then_vars = go(then_branch, forbidden | cond_vars | else_vars)
+                simplified_else, simplified_else_vars = go(else_branch, forbidden | cond_vars | then_vars)
+                if not (cond_vars & (then_vars | else_vars)) and not (original_vars & forbidden):
                     # Condition is independent of both branches: compute each
                     # PMF separately and mix by P(condition is truthy).
                     return _register(
-                        _mix(_pmf_of(sc, scv), _pmf_of(st, stv), _pmf_of(se, sev)),
-                        scv | stv | sev,
+                        _mix(
+                            _pmf_of(simplified_cond, simplified_cond_vars),
+                            _pmf_of(simplified_then, simplified_then_vars),
+                            _pmf_of(simplified_else, simplified_else_vars),
+                        ),
+                        simplified_cond_vars | simplified_then_vars | simplified_else_vars,
                     )
-                return IfElse(sc, st, se), scv | stv | sev
+                return (
+                    IfElse(simplified_cond, simplified_then, simplified_else),
+                    simplified_cond_vars | simplified_then_vars | simplified_else_vars,
+                )
 
             case _:
-                return e, ov
+                return node, original_vars
 
     simplified, _ = go(expr, frozenset())
     return simplified, new_domains
