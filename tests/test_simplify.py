@@ -9,12 +9,13 @@ the unoptimised build_pmf path).
 
 import pytest
 from dice.ast_nodes import Add, Sub, Mul, Compare, IfElse, And, Or, Const, Var
-from dice.engine import build_pmf, die_domain
+from dice.engine import build_pmf
 from dice.parser import parse
 from dice.simplify import simplify, vars_of
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def approx(a: float, b: float, tol: float = 1e-9) -> bool:
     return abs(a - b) < tol
@@ -36,6 +37,7 @@ def run_simplified(text: str) -> tuple[dict[int, float], dict]:
 
 
 # ── vars_of ───────────────────────────────────────────────────────────────────
+
 
 class TestVarsOf:
     def test_const(self):
@@ -88,6 +90,7 @@ class TestVarsOf:
 
 
 # ── Simplify: structural (domain count after simplification) ──────────────────
+
 
 class TestSimplifyStructure:
     def test_two_independent_dice_collapse_to_one(self):
@@ -145,21 +148,25 @@ class TestSimplifyStructure:
 # ── Simplify: semantic (PMF correctness) ──────────────────────────────────────
 # Every expression here is also checked against the unoptimised path.
 
+
 class TestSimplifyCorrectness:
-    @pytest.mark.parametrize('text', [
-        'd6 + d6',
-        'd6 - d6',
-        'd6 * d4',
-        'd6 > 3 -> d4 | 0',
-        'd6 > 5 -> d20 + d20 | 0',
-        'f(X, Y): X + Y > 6 -> 2*X | X - Y; f(d6, d6)',
-        'f(X): X > 3 -> X | 0; f(d6)',         # shared variable — no collapse
-        'f(X): X + X; f(d6)',                   # shared variable — no collapse
-        'd6 + d6 + d6 + d6',
-        '(d6 + d6) + (d6 + d6)',
-        'd6 > 3 && d6 > 3',
-        'd6 > 3 || d6 > 3',
-    ])
+    @pytest.mark.parametrize(
+        'text',
+        [
+            'd6 + d6',
+            'd6 - d6',
+            'd6 * d4',
+            'd6 > 3 -> d4 | 0',
+            'd6 > 5 -> d20 + d20 | 0',
+            'f(X, Y): X + Y > 6 -> 2*X | X - Y; f(d6, d6)',
+            'f(X): X > 3 -> X | 0; f(d6)',  # shared variable — no collapse
+            'f(X): X + X; f(d6)',  # shared variable — no collapse
+            'd6 + d6 + d6 + d6',
+            '(d6 + d6) + (d6 + d6)',
+            'd6 > 3 && d6 > 3',
+            'd6 > 3 || d6 > 3',
+        ],
+    )
     def test_pmf_matches_unoptimised(self, text):
         expected = run(text)
         got, _ = run_simplified(text)

@@ -1,7 +1,5 @@
 import pytest
-from dice.ast_nodes import (
-    Const, Var, Die, Add, Mul, Sub, Compare, IfElse, And, Or, VALID_OPS
-)
+from dice.ast_nodes import Const, Var, Die, Add, Mul, Sub, Compare, IfElse, And, Or, VALID_OPS
 
 
 class TestConst:
@@ -13,16 +11,16 @@ class TestConst:
         assert Const(3) != Const(4)
 
     def test_repr_contains_value(self):
-        assert "5" in repr(Const(5))
+        assert '5' in repr(Const(5))
 
 
 class TestVar:
     def test_stores_name(self):
-        assert Var("X").name == "X"
+        assert Var('X').name == 'X'
 
     def test_equality(self):
-        assert Var("X") == Var("X")
-        assert Var("X") != Var("Y")
+        assert Var('X') == Var('X')
+        assert Var('X') != Var('Y')
 
 
 class TestDie:
@@ -46,36 +44,36 @@ class TestAdd:
 
 class TestMul:
     def test_stores_children(self):
-        node = Mul(Const(2), Var("X"))
+        node = Mul(Const(2), Var('X'))
         assert node.left == Const(2)
-        assert node.right == Var("X")
+        assert node.right == Var('X')
 
 
 class TestSub:
     def test_stores_children(self):
-        node = Sub(Var("X"), Const(1))
-        assert node.left == Var("X")
+        node = Sub(Var('X'), Const(1))
+        assert node.left == Var('X')
         assert node.right == Const(1)
 
 
 class TestCompare:
-    @pytest.mark.parametrize("op", list(VALID_OPS))
+    @pytest.mark.parametrize('op', list(VALID_OPS))
     def test_valid_ops(self, op):
-        node = Compare(Var("X"), Const(3), op)
+        node = Compare(Var('X'), Const(3), op)
         assert node.op == op
 
     def test_stores_children(self):
-        node = Compare(Var("X"), Const(3), ">")
-        assert node.left == Var("X")
+        node = Compare(Var('X'), Const(3), '>')
+        assert node.left == Var('X')
         assert node.right == Const(3)
 
 
 class TestIfElse:
     def test_stores_all_branches(self):
-        cond = Compare(Var("X"), Const(3), ">")
-        node = IfElse(cond, Var("X"), Const(0))
+        cond = Compare(Var('X'), Const(3), '>')
+        node = IfElse(cond, Var('X'), Const(0))
         assert node.condition == cond
-        assert node.then_branch == Var("X")
+        assert node.then_branch == Var('X')
         assert node.else_branch == Const(0)
 
 
@@ -91,7 +89,7 @@ class TestEquality:
         assert a != b
 
     def test_different_types_not_equal(self):
-        assert Const(1) != Var("X")
+        assert Const(1) != Var('X')
         assert Add(Const(1), Const(2)) != Mul(Const(1), Const(2))
 
 
@@ -107,7 +105,7 @@ class TestAnd:
 
     def test_repr_contains_children(self):
         r = repr(And(Const(1), Const(2)))
-        assert "1" in r and "2" in r
+        assert '1' in r and '2' in r
 
 
 class TestOr:

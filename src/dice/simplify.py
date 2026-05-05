@@ -19,7 +19,7 @@ def vars_of(expr: Expr) -> frozenset[str]:
         case IfElse(condition=condition, then_branch=then_branch, else_branch=else_branch):
             return vars_of(condition) | vars_of(then_branch) | vars_of(else_branch)
         case _:
-            assert False, f"Unexpected node type: {expr}"
+            assert False, f'Unexpected node type: {expr}'
 
 
 def _pairwise(a: PMF, b: PMF, combine: Callable[[int, int], int]) -> PMF:
@@ -117,7 +117,7 @@ def simplify(expr: Expr, domains: dict[str, Domain]) -> tuple[Expr, dict[str, Do
         # virtual variable and must not appear in the Cartesian product.
         for variable in consume:
             new_domains.pop(variable, None)
-        name = f"_v{counter}"
+        name = f'_v{counter}'
         counter += 1
         new_domains[name] = list(pmf.items())
         return Var(name=name), frozenset({name})

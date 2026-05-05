@@ -104,16 +104,17 @@ def test_independent_conditional_large():
     # real computation time. Run directly to verify simplify collapses all 51
     # variables to 1 virtual variable and completes well under 1s.
     import time
+
     n = 50
     expr_text = f'd6 > 5 -> {_n_dice(n, 20)} | 0'
     expr, domains = parse(expr_text)
     expr, domains = simplify(expr, domains)
-    assert len(domains) == 1, f"Expected 1 virtual variable, got {len(domains)}"
+    assert len(domains) == 1, f'Expected 1 virtual variable, got {len(domains)}'
     t0 = time.perf_counter()
     pmf = build_pmf(expr, domains)
     elapsed = time.perf_counter() - t0
     assert abs(pmf.get(0, 0.0) - 5 / 6) < 1e-9
-    assert elapsed < 1.0, f"build_pmf took {elapsed:.3f}s after simplification"
+    assert elapsed < 1.0, f'build_pmf took {elapsed:.3f}s after simplification'
 
 
 # ── Shared variable across condition and branch (must enumerate) ───────────────

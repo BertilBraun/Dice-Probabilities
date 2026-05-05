@@ -39,22 +39,22 @@ class TestDieDomain:
 
 class TestSingleDie:
     def test_d6_identity_pmf(self):
-        pmf = build_pmf(Var("X"), {"X": D6})
+        pmf = build_pmf(Var('X'), {'X': D6})
         assert set(pmf.keys()) == {1, 2, 3, 4, 5, 6}
         for v in range(1, 7):
             assert approx(pmf[v], 1 / 6)
 
     def test_d6_sums_to_1(self):
-        pmf = build_pmf(Var("X"), {"X": D6})
+        pmf = build_pmf(Var('X'), {'X': D6})
         assert approx(pmf_sum(pmf), 1.0)
 
     def test_d6_expected_value_3_5(self):
-        pmf = build_pmf(Var("X"), {"X": D6})
+        pmf = build_pmf(Var('X'), {'X': D6})
         ev = sum(k * p for k, p in pmf.items())
         assert approx(ev, 3.5)
 
     def test_d6_no_negative_probs(self):
-        pmf = build_pmf(Var("X"), {"X": D6})
+        pmf = build_pmf(Var('X'), {'X': D6})
         assert all(p >= 0 for p in pmf.values())
 
     def test_const_expr_is_certain(self):
@@ -69,7 +69,7 @@ class TestSingleDie:
 class TestTwoDice:
     @pytest.fixture(autouse=True)
     def compute(self):
-        self.pmf = build_pmf(Add(Var("X"), Var("Y")), {"X": D6, "Y": D6})
+        self.pmf = build_pmf(Add(Var('X'), Var('Y')), {'X': D6, 'Y': D6})
 
     def test_2d6_min_is_2(self):
         assert min(self.pmf.keys()) == 2
@@ -103,20 +103,20 @@ class TestTwoDice:
 
 class TestScalarTransform:
     def test_2x_d6_expected_value_7(self):
-        pmf = build_pmf(Mul(Const(2), Var("X")), {"X": D6})
+        pmf = build_pmf(Mul(Const(2), Var('X')), {'X': D6})
         ev = sum(k * p for k, p in pmf.items())
         assert approx(ev, 7.0)
 
     def test_2x_d6_range_is_even_numbers(self):
-        pmf = build_pmf(Mul(Const(2), Var("X")), {"X": D6})
+        pmf = build_pmf(Mul(Const(2), Var('X')), {'X': D6})
         assert set(pmf.keys()) == {2, 4, 6, 8, 10, 12}
 
 
 class TestConditionalThreshold:
     @pytest.fixture(autouse=True)
     def compute(self):
-        cond = Compare(Var("X"), Const(3), ">")
-        self.pmf = build_pmf(IfElse(cond, Var("X"), Const(0)), {"X": D6})
+        cond = Compare(Var('X'), Const(3), '>')
+        self.pmf = build_pmf(IfElse(cond, Var('X'), Const(0)), {'X': D6})
 
     def test_keys_are_correct(self):
         assert set(self.pmf.keys()) == {0, 4, 5, 6}
@@ -138,10 +138,10 @@ class TestConditionalThreshold:
 class TestTwoVarConditional:
     @pytest.fixture(autouse=True)
     def compute(self):
-        cond  = Compare(Add(Var("X"), Var("Y")), Const(6), ">")
-        then_ = Add(Mul(Var("X"), Const(2)), Var("Y"))
-        else_ = Add(Var("X"), Mul(Const(2), Var("Y")))
-        self.pmf = build_pmf(IfElse(cond, then_, else_), {"X": D6, "Y": D6})
+        cond = Compare(Add(Var('X'), Var('Y')), Const(6), '>')
+        then_ = Add(Mul(Var('X'), Const(2)), Var('Y'))
+        else_ = Add(Var('X'), Mul(Const(2), Var('Y')))
+        self.pmf = build_pmf(IfElse(cond, then_, else_), {'X': D6, 'Y': D6})
 
     def test_sums_to_1(self):
         assert approx(pmf_sum(self.pmf), 1.0)
@@ -162,10 +162,10 @@ class TestTwoVarConditional:
 
 class TestMixedDice:
     def test_d4_plus_d20_expected_value(self):
-        pmf = build_pmf(Add(Var("A"), Var("B")), {"A": D4, "B": D20})
+        pmf = build_pmf(Add(Var('A'), Var('B')), {'A': D4, 'B': D20})
         ev = sum(k * p for k, p in pmf.items())
         assert approx(ev, 13.0)
 
     def test_d4_plus_d20_sums_to_1(self):
-        pmf = build_pmf(Add(Var("A"), Var("B")), {"A": D4, "B": D20})
+        pmf = build_pmf(Add(Var('A'), Var('B')), {'A': D4, 'B': D20})
         assert approx(pmf_sum(pmf), 1.0)

@@ -4,9 +4,10 @@ in conditions and in value expressions.
 
 Expected values were derived analytically before writing the tests.
 """
+
 import pytest
 from dice.parser import parse
-from dice.engine import build_pmf, die_domain
+from dice.engine import build_pmf
 
 
 def approx(a: float, b: float, tol: float = 1e-9) -> bool:
@@ -33,10 +34,11 @@ def _run(text: str) -> dict[int, float]:
 # P(0) = 6/36
 # E[|X-Y|] = (0*6 + 1*10 + 2*8 + 3*6 + 4*4 + 5*2) / 36 = 70/36 = 35/18
 
+
 class TestAbsoluteDifference:
     @pytest.fixture(autouse=True)
     def compute(self):
-        self.pmf = _run("e(X, Y): X > Y -> X - Y | Y - X; e(d6, d6)")
+        self.pmf = _run('e(X, Y): X > Y -> X - Y | Y - X; e(d6, d6)')
 
     def test_sums_to_1(self):
         assert approx(pmf_sum(self.pmf), 1.0)
@@ -73,10 +75,11 @@ class TestAbsoluteDifference:
 # P(max = k) = (2k - 1) / 36  for k ∈ {1..6}
 # E[max(X,Y)] = 161 / 36
 
+
 class TestMaxOfTwoDice:
     @pytest.fixture(autouse=True)
     def compute(self):
-        self.pmf = _run("e(X, Y): X > Y -> X | Y; e(d6, d6)")
+        self.pmf = _run('e(X, Y): X > Y -> X | Y; e(d6, d6)')
 
     def test_outcomes_are_1_through_6(self):
         assert set(self.pmf.keys()) == {1, 2, 3, 4, 5, 6}
@@ -84,7 +87,7 @@ class TestMaxOfTwoDice:
     def test_sums_to_1(self):
         assert approx(pmf_sum(self.pmf), 1.0)
 
-    @pytest.mark.parametrize("k", [1, 2, 3, 4, 5, 6])
+    @pytest.mark.parametrize('k', [1, 2, 3, 4, 5, 6])
     def test_prob_of_k(self, k):
         assert approx(self.pmf[k], (2 * k - 1) / 36)
 
@@ -102,10 +105,11 @@ class TestMaxOfTwoDice:
 # E[min(X,Y)] = 91 / 36
 # Cross-check: E[max] + E[min] = E[X] + E[Y] = 7.0
 
+
 class TestMinOfTwoDice:
     @pytest.fixture(autouse=True)
     def compute(self):
-        self.pmf = _run("e(X, Y): X > Y -> Y | X; e(d6, d6)")
+        self.pmf = _run('e(X, Y): X > Y -> Y | X; e(d6, d6)')
 
     def test_outcomes_are_1_through_6(self):
         assert set(self.pmf.keys()) == {1, 2, 3, 4, 5, 6}
@@ -113,7 +117,7 @@ class TestMinOfTwoDice:
     def test_sums_to_1(self):
         assert approx(pmf_sum(self.pmf), 1.0)
 
-    @pytest.mark.parametrize("k", [1, 2, 3, 4, 5, 6])
+    @pytest.mark.parametrize('k', [1, 2, 3, 4, 5, 6])
     def test_prob_of_k(self, k):
         assert approx(self.pmf[k], (13 - 2 * k) / 36)
 
@@ -127,9 +131,10 @@ class TestMinOfTwoDice:
 
 class TestMaxPlusMinEqualsSum:
     """E[max] + E[min] = E[X+Y] = 7 — a purely analytic identity."""
+
     def test_ev_identity(self):
-        pmf_max = _run("e(X, Y): X > Y -> X | Y; e(d6, d6)")
-        pmf_min = _run("e(X, Y): X > Y -> Y | X; e(d6, d6)")
+        pmf_max = _run('e(X, Y): X > Y -> X | Y; e(d6, d6)')
+        pmf_min = _run('e(X, Y): X > Y -> Y | X; e(d6, d6)')
         assert approx(ev(pmf_max) + ev(pmf_min), 7.0)
 
 
@@ -154,10 +159,11 @@ class TestMaxPlusMinEqualsSum:
 #      16 + 20*2 + 24*2 + 25 + 30*2 + 36) / 36
 #   = 333 / 36 = 9.25
 
+
 class TestDoubleThreshold:
     @pytest.fixture(autouse=True)
     def compute(self):
-        self.pmf = _run("e(X, Y): X > 3 -> (Y > 3 -> X*Y | X) | Y; e(d6, d6)")
+        self.pmf = _run('e(X, Y): X > 3 -> (Y > 3 -> X*Y | X) | Y; e(d6, d6)')
 
     def test_sums_to_1(self):
         assert approx(pmf_sum(self.pmf), 1.0)
@@ -202,13 +208,11 @@ class TestDoubleThreshold:
 # Sum of all 36 values = 125 + 30 + 158 + 50 = 363
 # E = 363/36 = 121/12
 
+
 class TestFourWayBranching:
     @pytest.fixture(autouse=True)
     def compute(self):
-        self.pmf = _run(
-            "e(X, Y): X > Y -> (X > 4 -> X*2 + Y | X + Y) | "
-            "(Y > 4 -> X + Y*2 | X + Y); e(d6, d6)"
-        )
+        self.pmf = _run('e(X, Y): X > Y -> (X > 4 -> X*2 + Y | X + Y) | (Y > 4 -> X + Y*2 | X + Y); e(d6, d6)')
 
     def test_sums_to_1(self):
         assert approx(pmf_sum(self.pmf), 1.0)
@@ -250,10 +254,11 @@ class TestFourWayBranching:
 # This is a non-trivial diagonal boundary in the (X,Y) space.
 # We verify structural properties only (no clean closed form).
 
+
 class TestAsymmetricCondition:
     @pytest.fixture(autouse=True)
     def compute(self):
-        self.pmf = _run("e(X, Y): X*2 > Y + 3 -> X*Y | X + Y; e(d6, d6)")
+        self.pmf = _run('e(X, Y): X*2 > Y + 3 -> X*Y | X + Y; e(d6, d6)')
 
     def test_sums_to_1(self):
         assert approx(pmf_sum(self.pmf), 1.0)
@@ -288,12 +293,11 @@ class TestAsymmetricCondition:
 # Condition: X+Y > Z+3  (two dice vs one)
 # We verify structural properties and two known expected-value bounds.
 
+
 class TestThreeVariables:
     @pytest.fixture(autouse=True)
     def compute(self):
-        self.pmf = _run(
-            "e(X, Y, Z): X + Y > Z + 3 -> X*Y - Z | X + Y + Z; e(d4, d4, d6)"
-        )
+        self.pmf = _run('e(X, Y, Z): X + Y > Z + 3 -> X*Y - Z | X + Y + Z; e(d4, d4, d6)')
 
     def test_sums_to_1(self):
         assert approx(pmf_sum(self.pmf), 1.0)
@@ -318,28 +322,28 @@ class TestThreeVariables:
 # ─── Property: all extreme cases satisfy probability axioms ───────────────────
 
 EXTREME_EXPRESSIONS = [
-    "e(X, Y): X > Y -> X - Y | Y - X; e(d6, d6)",
-    "e(X, Y): X > Y -> X | Y; e(d6, d6)",
-    "e(X, Y): X > Y -> Y | X; e(d6, d6)",
-    "e(X, Y): X > 3 -> (Y > 3 -> X*Y | X) | Y; e(d6, d6)",
-    "e(X, Y): X > Y -> (X > 4 -> X*2 + Y | X + Y) | (Y > 4 -> X + Y*2 | X + Y); e(d6, d6)",
-    "e(X, Y): X*2 > Y + 3 -> X*Y | X + Y; e(d6, d6)",
-    "e(X, Y, Z): X + Y > Z + 3 -> X*Y - Z | X + Y + Z; e(d4, d4, d6)",
+    'e(X, Y): X > Y -> X - Y | Y - X; e(d6, d6)',
+    'e(X, Y): X > Y -> X | Y; e(d6, d6)',
+    'e(X, Y): X > Y -> Y | X; e(d6, d6)',
+    'e(X, Y): X > 3 -> (Y > 3 -> X*Y | X) | Y; e(d6, d6)',
+    'e(X, Y): X > Y -> (X > 4 -> X*2 + Y | X + Y) | (Y > 4 -> X + Y*2 | X + Y); e(d6, d6)',
+    'e(X, Y): X*2 > Y + 3 -> X*Y | X + Y; e(d6, d6)',
+    'e(X, Y, Z): X + Y > Z + 3 -> X*Y - Z | X + Y + Z; e(d4, d4, d6)',
 ]
 
 
 class TestProbabilityAxioms:
-    @pytest.mark.parametrize("text", EXTREME_EXPRESSIONS)
+    @pytest.mark.parametrize('text', EXTREME_EXPRESSIONS)
     def test_sums_to_1(self, text):
         pmf = _run(text)
         assert approx(pmf_sum(pmf), 1.0)
 
-    @pytest.mark.parametrize("text", EXTREME_EXPRESSIONS)
+    @pytest.mark.parametrize('text', EXTREME_EXPRESSIONS)
     def test_no_negative_probs(self, text):
         pmf = _run(text)
         assert all(p >= 0 for p in pmf.values())
 
-    @pytest.mark.parametrize("text", EXTREME_EXPRESSIONS)
+    @pytest.mark.parametrize('text', EXTREME_EXPRESSIONS)
     def test_all_probs_at_most_1(self, text):
         pmf = _run(text)
         assert all(p <= 1.0 + 1e-9 for p in pmf.values())

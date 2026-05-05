@@ -16,6 +16,6 @@ def eval_expr(expr: Expr, env: Env) -> int:
         case IfElse(condition=condition, then_branch=then_branch, else_branch=else_branch):
             return eval_expr(then_branch, env) if eval_expr(condition, env) else eval_expr(else_branch, env)
         case Call():
-            raise TypeError("Unexpanded function call reached the evaluator; use parse() to expand first")
+            raise TypeError('Unexpanded function call reached the evaluator; use parse() to expand first')
         case _:
-            raise TypeError(f"Unknown expression node: {type(expr)}")
+            raise TypeError(f'Unknown expression node: {type(expr)}')
