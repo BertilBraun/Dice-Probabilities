@@ -360,6 +360,15 @@ X > 3 -> (Y > 3 -> X*Y | X) | Y
 
 ---
 
+## Extending the language
+
+Two design documents in [documentation/](documentation/) show how to add new language features:
+
+- [adding-a-parser-feature.md](documentation/adding-a-parser-feature.md) — a `match` expression that desugars to `IfElse` inside `_extract_dice`. The new syntax exists only during parsing; the evaluator, engine, and simplify pass see no new nodes.
+- [adding-a-binary-operator.md](documentation/adding-a-binary-operator.md) — `min`/`max` operators and `adv`/`dis` advantage sugar. `Min`/`Max` are permanent `BinaryNode` subclasses that flow through the full pipeline. The `BinaryNode.apply` protocol means no new code is needed in the evaluator, engine, or simplify pass.
+
+---
+
 ## Known Limitations
 
 - Functions must be defined before use (top-to-bottom only)
